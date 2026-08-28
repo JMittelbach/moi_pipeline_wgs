@@ -9,7 +9,8 @@ usage() {
 Usage: ./setup.sh [--help]
 
 Create or update the Conda environment 'moi_pipeline', install the command-line
-tools and R MOI dependencies, and check that the executables are available.
+tools (including optional FreeBayes variant calling) and R MOI dependencies,
+and check that the executables are available.
 This script does not download FASTQs, reference genomes, indexes, targets, or
 results. After setup, activate the environment and edit config/pipeline.env.
 
@@ -59,6 +60,7 @@ packages=(
   "samtools"
   "bcftools"
   "htslib"
+  "freebayes"
 )
 
 echo "[1/3] creating/updating Conda environment: $ENV_NAME"
@@ -83,9 +85,26 @@ else
   fi
 fi
 
+# Some compiler activation hooks reference optional variables (for example
+# GFORTRAN) without guarding them. Temporarily relax nounset for activation,
+# then restore the script's strict mode immediately afterwards.
+set +u
+if conda activate "$ENV_NAME"; then
+  activate_status=0
+else
+  activate_status=$?
+fi
+set -u
+if [[ "$activate_status" -ne 0 ]]; then
+  echo "[ERROR] Could not activate the Conda environment $ENV_NAME." >&2
+  echo "        Fix: run 'conda init zsh', restart the terminal, then rerun ./setup.sh." >&2
+  exit 1
+fi
+ENV_BIN="$CONDA_PREFIX/bin"
+
 echo "[2/3] installing MOI estimator (moimix; flexmix fallback is retained)"
-if ! conda run --no-capture-output -n "$ENV_NAME" Rscript "$PIPELINE_ROOT/scripts/setup_moimix.R"; then
-  if conda run --no-capture-output -n "$ENV_NAME" Rscript -e 'quit(status=if (requireNamespace("flexmix", quietly=TRUE)) 0 else 1)' >/dev/null 2>&1; then
+if ! "$ENV_BIN/Rscript" "$PIPELINE_ROOT/scripts/setup_moimix.R"; then
+  if "$ENV_BIN/Rscript" -e 'quit(status=if (requireNamespace("flexmix", quietly=TRUE)) 0 else 1)' >/dev/null 2>&1; then
     echo "[WARN] moimix could not be installed; flexmix fallback is available." >&2
     echo "       The pipeline will label its MOI result as a flexmix equivalent." >&2
   else
@@ -96,8 +115,8 @@ if ! conda run --no-capture-output -n "$ENV_NAME" Rscript "$PIPELINE_ROOT/script
 fi
 
 echo "[3/3] checking core executables"
-for tool in python fastp bwa samtools bcftools bgzip tabix Rscript; do
-  if ! conda run --no-capture-output -n "$ENV_NAME" bash -c "command -v '$tool'" >/dev/null 2>&1; then
+for tool in python fastp bwa samtools bcftools bgzip tabix freebayes Rscript; do
+  if [[ ! -x "$ENV_BIN/$tool" ]]; then
     echo "[ERROR] $tool is missing from $ENV_NAME." >&2
     echo "        Fix: conda activate $ENV_NAME && conda install -c conda-forge -c bioconda $tool" >&2
     exit 1

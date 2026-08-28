@@ -26,7 +26,9 @@ while IFS=$'\t' read -r sample _r1 _r2; do
   echo "[4/9] [$sample_total] $sample: BWA-MEM + name sort"
   rg="@RG\\tID:${sample}\\tSM:${sample}\\tPL:ILLUMINA"
   mkdir -p "$(dirname "$output")"
-  if ! { bwa mem -t "$THREADS" -R "$rg" "$REFERENCE_LINK" "$input1" "$input2" \
+  # Step 02 builds the index at BWA_PREFIX (rather than beside the FASTA
+  # symlink), so use that exact prefix for alignment.
+  if ! { bwa mem -t "$THREADS" -R "$rg" "$BWA_PREFIX" "$input1" "$input2" \
       | samtools sort -n -@ "$THREADS" -o "$output" -; } >"$log" 2>&1; then
     echo "[ERROR] alignment failed for $sample. Last log lines:" >&2
     tail -n 40 "$log" >&2 || true

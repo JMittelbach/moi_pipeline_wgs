@@ -5,6 +5,8 @@ This repository contains a small, sequential pipeline for paired-end
 removes PCR duplicates, counts alleles at a frozen target panel, and reports
 Fws plus a BinomMix MOI estimate for every sample. The final step validates the
 human-readable main table and writes three small SVG quality/result plots.
+An optional FreeBayes branch can also call ordinary variants from each
+deduplicated BAM and write an indexed VCF; it is disabled by default.
 
 ## Applicability to Plasmodium WGS
 
@@ -14,11 +16,11 @@ the same organism, contig names, and REF/ALT alleles. This workflow uses a
 *P. falciparum* Pf3D7/Pf4 panel; that panel must not be reused
 for another Plasmodium species or a different allele universe.
 
-This is not a complete whole-genome variant-discovery workflow. It intentionally
-stops at fixed-site allele counts, which is the input required by the MOI/Fws
-calculation. Add a separately validated variant caller if ordinary VCF
-discovery is also required. No FASTQ, BAM, reference, index, or result file is
-stored in this repository.
+The fixed-site path intentionally stops at allele counts, which is the input
+required by the MOI/Fws calculation. FreeBayes is available as an optional
+whole-genome variant-calling convenience, but its VCF still requires project-
+specific filtering and review before scientific interpretation. No FASTQ, BAM,
+reference, index, or result file is stored in this repository.
 
 ## Quick start
 
@@ -52,6 +54,10 @@ without rerunning previous steps:
 `setup.sh` creates or updates the Conda environment `moi_pipeline`. The default
 configuration uses three clearly separated runtime directories (the data files
 themselves are deliberately not included):
+
+The setup and pipeline invoke tools from the active Conda environment
+explicitly. This avoids accidentally mixing Homebrew/system programs when
+their executables appear before Conda on `PATH` (a common macOS configuration).
 
 ```text
 raw_data/
@@ -113,6 +119,10 @@ scheduler, hidden filesystem mount, or pre-existing output directory.
 | `MIN_MAPQ` | mapping-quality filter used by `bcftools mpileup`; default `30` |
 | `MIN_BASEQ` | base-quality filter used by `bcftools mpileup`; default `20` |
 | `MAX_DEPTH` | per-file depth cap for `bcftools mpileup`; default `100000` |
+| `RUN_FREEBAYES` | `1` enables optional FreeBayes VCF calling after duplicate removal; default `0` |
+| `FREEBAYES_PLOIDY` | FreeBayes ploidy passed to each BAM; default `1` |
+| `FREEBAYES_MIN_ALT_COUNT` | minimum alternate observations for a FreeBayes call; default `2` |
+| `FREEBAYES_MIN_ALT_FRACTION` | minimum alternate fraction for a FreeBayes call; default `0.2` |
 | `POPULATION` | population column used for Fws; it must exist in `POPULATION_PANEL`; default `Global` |
 | `FWS_MIN_DEPTH` | minimum modelled allele depth for Fws; default `50` |
 | `MAX_UNMODELLED_FRACTION` | maximum fraction of reported depth not represented in REF/ALT; default `0.02` |
@@ -130,15 +140,33 @@ scheduler, hidden filesystem mount, or pre-existing output directory.
 | 3 | `scripts/03_trim_reads.sh` | `fastp` paired-end adapter detection, quality filtering, and minimum length | `processed/trimmed/<sample>_R1/R2.fastq.gz` plus JSON/HTML QC |
 | 4 | `scripts/04_align_wgs.sh` | `bwa mem` with a read group, piped to `samtools sort -n` | `processed/bam/<sample>.name.bam` |
 | 5 | `scripts/05_mark_duplicates.sh` | `samtools fixmate`, coordinate sort, `samtools markdup -r`, and index | `processed/bam/<sample>.dedup.bam` + BAI; `processed/qc/duplicates/` flagstat |
+| 6a (optional) | `scripts/06_call_variants_freebayes.sh` | FreeBayes calling from each deduplicated BAM, BGZF compression, and Tabix indexing | `results/variants/<sample>.freebayes.vcf.gz` + `.tbi` |
 | 6 | `scripts/06_extract_counts.sh` | `bcftools mpileup` (`MAPQ`, `baseQ`, depth limits) plus haploid allele-constrained `bcftools call` | `processed/counts/<sample>.tsv` with `chrom/pos/ref/alt/AD/DP` |
 | 7 | `scripts/07_estimate_moi_fws.py` + `scripts/07_binommix.R` | Fws from the population panel, then BinomMix over `K_VALUES` | `results/metrics/<sample>.moi_fws.tsv`; R logs in `processed/logs/` |
 | 8 | `scripts/08_summary.sh` | combines all rows and selects one human-readable line per sample | `results/moi_fws_summary.tsv` and `results/moi_per_sample.tsv` |
 | 9 | `scripts/09_check_main_table_and_plots.py` | validates table headers, sample uniqueness, MOI/BIC fields, Fws values, and metric completeness; writes small dependency-free SVG plots | `OUTPUT_DIR/plots/moi_per_sample.svg`, `OUTPUT_DIR/plots/fws_per_sample.svg`, and `OUTPUT_DIR/plots/bic_support_per_sample.svg` |
 
-The top-level `scripts/00_run_pipeline.sh` calls those steps sequentially. Full
+The top-level `scripts/00_run_pipeline.sh` calls those steps sequentially;
+the optional 6a branch exits cleanly when `RUN_FREEBAYES=0`. Full
 command output is written to `PROCESSED_DIR/logs`; the terminal shows only step,
 sample, and completion status. A failed command prints its last 40 log lines
 and an explicit repair suggestion.
+
+### Optional FreeBayes VCF calling
+
+Set `RUN_FREEBAYES=1` in the configuration and run the normal pipeline. After
+duplicate removal, one compressed and Tabix-indexed VCF is written per sample:
+
+```text
+results/variants/<sample>.freebayes.vcf.gz
+results/variants/<sample>.freebayes.vcf.gz.tbi
+```
+
+The branch uses the configured `MIN_MAPQ` and `MIN_BASEQ` values and the
+`FREEBAYES_*` thresholds. It calls across the reference (not only the frozen
+MOI target panel); use a separate, validated filtering/annotation workflow for
+downstream variant analyses. The fixed-target counts and MOI/Fws outputs are
+unchanged by enabling this branch.
 
 ## MOI, Fws, and confidence fields
 
@@ -196,6 +224,7 @@ processed/
 ├── qc/                       # fastp and samtools QC reports
 └── logs/                     # full command logs
 results/
+├── variants/                 # optional FreeBayes VCFs and Tabix indexes
 ├── metrics/                  # per-sample MOI/Fws TSVs
 ├── moi_fws_summary.tsv       # all three metric rows per sample
 ├── moi_per_sample.tsv        # one human-readable row per sample
@@ -206,8 +235,11 @@ results/
 
 Step 03 writes a fastp JSON and HTML report for each sample under
 `processed/qc/trim/`. Step 05 writes duplicate-removed BAM `samtools flagstat`
-reports under `processed/qc/duplicates/`. The data-producing commands in steps
-02–07 write full logs under `processed/logs/`; preflight and table checks print
+reports under `processed/qc/duplicates/`. When enabled, FreeBayes writes one
+VCF and index per sample under
+`results/variants/` and logs under `processed/logs/06_freebayes_<sample>.log`.
+The data-producing commands in steps 02–07 write full logs under
+`processed/logs/`; preflight and table checks print
 concise diagnostics. The terminal deliberately shows only the current step,
 sample, and completion status. Step 09 checks table structure and values before
 writing the three small SVGs in `results/plots/`. Review these reports before
@@ -272,7 +304,7 @@ population panel; obtain those files from a versioned project release.
 ### Software and method references
 
 The Conda environment installs Python 3.11, R 4.3, `fastp`, BWA, SAMtools,
-BCFtools/HTSlib, and `flexmix`; `setup_moimix.R` then attempts to install the
+BCFtools/HTSlib, FreeBayes, and `flexmix`; `setup_moimix.R` then attempts to install the
 pinned `moimix` revision used by this workflow. Report the exact resolved
 versions in a manuscript or supplement (for example,
 `conda list --name moi_pipeline` and `Rscript -e 'sessionInfo()'`). The primary
@@ -300,6 +332,8 @@ method references are:
 - [`moimix`](https://github.com/bahlolab/moimix): Bahlolab GitHub repository, revision
   `802eaf1fab653690b1b1f1475c879b5189ee40ae`, installed by
   [`scripts/setup_moimix.R`](scripts/setup_moimix.R).
+- [`FreeBayes`](https://github.com/freebayes/freebayes): haplotype-based variant
+  detector used by the optional VCF branch.
 
 For a reproducible publication run, record the repository commit, the final
 `config/pipeline.env`, the sample sheet, the resource checksum record, and the
@@ -350,6 +384,8 @@ flowchart TD
     READS --> TRIM
     TRIM --> ALIGN[04 BWA-MEM + samtools name sort<br/>processed/bam/]
     ALIGN --> DEDUP[05 fixmate + coordinate sort<br/>samtools markdup -r + index<br/>processed/bam/]
+    DEDUP --> FB{RUN_FREEBAYES=1?}
+    FB -->|yes| CALL[06a FreeBayes<br/>results/variants/*.freebayes.vcf.gz]
     DEDUP --> COUNTS[06 bcftools mpileup/call<br/>fixed REF/ALT AD/DP<br/>processed/counts/]
     TARGETS[raw_data/reference/<br/>indexed fixed targets] --> COUNTS
     IDX --> COUNTS

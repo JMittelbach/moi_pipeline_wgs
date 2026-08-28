@@ -26,6 +26,13 @@ fail() {
 # shellcheck disable=SC1090
 source "$CONFIG_FILE"
 
+# On macOS, shell activation may append Conda after Homebrew in PATH. Put the
+# active environment first so all pipeline tools (not only Rscript) agree.
+if [[ -n "${CONDA_PREFIX:-}" && -d "$CONDA_PREFIX/bin" ]]; then
+  PATH="$CONDA_PREFIX/bin:$PATH"
+  export PATH
+fi
+
 resolve_path() {
   local value="$1"
   if [[ "$value" == /* ]]; then
@@ -87,9 +94,21 @@ progress() {
 
 require_command() {
   local command_name="$1"
-  command -v "$command_name" >/dev/null 2>&1 || fail \
+  tool_path "$command_name" >/dev/null || fail \
     "required program not found: $command_name" \
     "run ./setup.sh, then activate the environment with: conda activate moi_pipeline"
+}
+
+# Conda activation can append its bin directory after Homebrew's bin on macOS.
+# Prefer the active environment's executable explicitly so host R/Python tools
+# cannot accidentally be mixed with Conda libraries.
+tool_path() {
+  local command_name="$1"
+  if [[ -n "${CONDA_PREFIX:-}" && -x "$CONDA_PREFIX/bin/$command_name" ]]; then
+    printf '%s\n' "$CONDA_PREFIX/bin/$command_name"
+  else
+    command -v "$command_name" 2>/dev/null || return 1
+  fi
 }
 
 run_logged() {
@@ -123,3 +142,16 @@ name_bam() { printf '%s\n' "$PROCESSED_DIR/bam/$1.name.bam"; }
 dedup_bam() { printf '%s\n' "$PROCESSED_DIR/bam/$1.dedup.bam"; }
 counts_tsv() { printf '%s\n' "$PROCESSED_DIR/counts/$1.tsv"; }
 metrics_tsv() { printf '%s\n' "$OUTPUT_DIR/metrics/$1.moi_fws.tsv"; }
+freebayes_vcf() { printf '%s\n' "$OUTPUT_DIR/variants/$1.freebayes.vcf.gz"; }
+
+# FreeBayes is an optional whole-genome variant-calling branch.  The defaults
+# keep the historical fixed-target MOI/Fws path unchanged when it is disabled.
+RUN_FREEBAYES="${RUN_FREEBAYES:-0}"
+FREEBAYES_PLOIDY="${FREEBAYES_PLOIDY:-1}"
+FREEBAYES_MIN_ALT_COUNT="${FREEBAYES_MIN_ALT_COUNT:-2}"
+FREEBAYES_MIN_ALT_FRACTION="${FREEBAYES_MIN_ALT_FRACTION:-0.2}"
+[[ "$RUN_FREEBAYES" =~ ^[01]$ ]] || fail "RUN_FREEBAYES must be 0 or 1" "set RUN_FREEBAYES=0 or RUN_FREEBAYES=1 in $CONFIG_FILE"
+[[ "$FREEBAYES_PLOIDY" =~ ^[1-9][0-9]*$ ]] || fail "FREEBAYES_PLOIDY must be a positive integer" "set FREEBAYES_PLOIDY in $CONFIG_FILE"
+[[ "$FREEBAYES_MIN_ALT_COUNT" =~ ^[1-9][0-9]*$ ]] || fail "FREEBAYES_MIN_ALT_COUNT must be a positive integer" "set FREEBAYES_MIN_ALT_COUNT in $CONFIG_FILE"
+awk -v fraction="$FREEBAYES_MIN_ALT_FRACTION" 'BEGIN { exit !(fraction >= 0 && fraction <= 1) }' || fail \
+  "FREEBAYES_MIN_ALT_FRACTION must be between 0 and 1" "set FREEBAYES_MIN_ALT_FRACTION in $CONFIG_FILE"

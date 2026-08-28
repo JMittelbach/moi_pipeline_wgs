@@ -10,6 +10,9 @@ progress "1/9" "checking programs, configuration, and input files"
 for program in python Rscript fastp bwa samtools bcftools bgzip tabix; do
   require_command "$program"
 done
+if [[ "$RUN_FREEBAYES" == 1 ]]; then
+  require_command freebayes
+fi
 
 [[ -r "$SAMPLES_TSV" ]] || fail "sample sheet is not readable: $SAMPLES_TSV" \
   "create a tab-separated file with header sample_id<TAB>R1<TAB>R2"
@@ -54,7 +57,8 @@ while IFS=$'\t' read -r sample r1 r2; do
   sample_total=$((sample_total + 1))
 done < <(sample_rows)
 
-if ! Rscript -e 'ok <- requireNamespace("moimix", quietly=TRUE) || requireNamespace("flexmix", quietly=TRUE); quit(status=if (ok) 0 else 1)' >/dev/null 2>&1; then
+R_SCRIPT="$(tool_path Rscript)"
+if ! "$R_SCRIPT" -e 'ok <- requireNamespace("moimix", quietly=TRUE) || requireNamespace("flexmix", quietly=TRUE); quit(status=if (ok) 0 else 1)' >/dev/null 2>&1; then
   fail "neither the R package moimix nor flexmix is installed" \
     "run ./setup.sh again; flexmix is an explicit fallback when moimix cannot build"
 fi

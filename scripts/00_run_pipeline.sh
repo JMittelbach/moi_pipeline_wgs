@@ -50,6 +50,7 @@ steps=(
   03_trim_reads.sh
   04_align_wgs.sh
   05_mark_duplicates.sh
+  06_call_variants_freebayes.sh
   06_extract_counts.sh
   07_estimate_moi_fws.py
   08_summary.sh

@@ -7,6 +7,7 @@ import argparse
 import bisect
 import csv
 import gzip
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -163,7 +164,9 @@ def run_sample(args: argparse.Namespace, sample: str, counts_path: Path, output:
     with tempfile.NamedTemporaryFile(prefix="moi_", suffix=".tsv", delete=False) as handle:
         moi_output = Path(handle.name)
     try:
-        command = ["Rscript", str(args.binommix), str(counts_path), sample, args.k_values, str(args.coverage), str(args.niter), str(moi_output)]
+        rscript = Path(os.environ.get("CONDA_PREFIX", "")) / "bin" / "Rscript"
+        rscript_command = str(rscript) if rscript.is_file() else "Rscript"
+        command = [rscript_command, str(args.binommix), str(counts_path), sample, args.k_values, str(args.coverage), str(args.niter), str(moi_output)]
         result = subprocess.run(command, text=True, capture_output=True)
         log_path = args.log_dir / f"07_moi_{sample}.log"
         try:
