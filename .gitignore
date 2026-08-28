@@ -1,0 +1,25 @@
+# Biological inputs and generated workflow data are intentionally external.
+data/
+results/
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.bam
+*.bai
+*.cram
+*.crai
+*.fasta
+*.fa
+*.fna
+*.fai
+*.bwt
+*.pac
+*.ann
+*.amb
+*.sa
+*.targets.tsv.gz
+*.targets.tsv.gz.tbi
+*.targets.tsv.gz.csi
+*.moi_fws.tsv
+*.svg
