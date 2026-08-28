@@ -58,6 +58,18 @@ biological files themselves are deliberately not included):
 The setup and pipeline invoke tools from the active Conda environment
 explicitly. This avoids accidentally mixing Homebrew/system programs when
 their executables appear before Conda on `PATH` (a common macOS configuration).
+The environment contains a complete R 4.3 base installation (including the
+`R` and `Rscript` executables, `flexmix`, `remotes`, and `BiocManager`) and
+Python 3.11 with `pip`, `setuptools`, and `wheel`. The wrapper prepends the
+active environment before launching Python/R steps.
+
+Every pipeline step reads `MAX_RAM_GB` (default `48`) and rejects values above
+48 GiB. GATK's `-Xmx` is checked against the same ceiling, R receives a
+matching `R_MAX_VSIZE`, and common BLAS runtimes inherit the configured thread
+count. On Linux a per-process virtual-memory limit is also applied; macOS does
+not offer a portable hard RSS limit, so the explicit Java/R limits and
+sequential execution are the portable safeguards there. This is a ceiling,
+not a request to allocate 48 GiB for every tool.
 
 ```text
 data/
@@ -315,6 +327,16 @@ sample, and completion status. Step 09 checks table structure and values before
 writing the three small SVGs in `results/plots/`. Review these reports before
 interpreting MOI or Fws; this repository does not perform automatic contamination
 or coverage-based sample exclusion.
+
+### Real WGS smoke-test data
+
+One small, public paired-end WGS run from the Nature study linked above is
+provided under `test_data/nature_tactcv/` (the FASTQs are kept outside Git).
+Its metadata and a ready-to-use configuration are included; the directory
+README records the accession, checksums, and download commands. The config
+also enables both FreeBayes and GATK4. The biological reference and the
+matching Pf4 target/population files remain external prerequisites, so the
+smoke test must not be interpreted until those resources are supplied.
 
 No biological data are downloaded by `setup.sh`. Download or obtain the FASTQs,
 Pf3D7 FASTA, indexed target file, and matching population panel separately;

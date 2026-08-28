@@ -3,6 +3,11 @@ set -Eeuo pipefail
 
 PIPELINE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+if [[ -n "${CONDA_PREFIX:-}" && -d "$CONDA_PREFIX/bin" ]]; then
+  PATH="$CONDA_PREFIX/bin:$PATH"
+  export PATH
+fi
+
 usage() {
   cat <<'EOF'
 Usage: ./scripts/00_run_pipeline.sh [CONFIG]

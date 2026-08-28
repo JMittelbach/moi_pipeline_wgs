@@ -3,6 +3,14 @@ set -Eeuo pipefail
 
 PIPELINE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Ensure /usr/bin/env resolves Python/R helpers from the activated Conda
+# environment even on macOS installations whose activation hook leaves PATH
+# unchanged.  setup.sh installs the complete interpreter toolchain here.
+if [[ -n "${CONDA_PREFIX:-}" && -d "$CONDA_PREFIX/bin" ]]; then
+  PATH="$CONDA_PREFIX/bin:$PATH"
+  export PATH
+fi
+
 usage() {
   cat <<'EOF'
 Usage: ./run_pipeline.sh build-metadata

@@ -1,0 +1,3 @@
+file	lane	sample	read
+VN001-3-029_R1.fastq.gz	L001	VN001-3-029	R1
+VN001-3-029_R2.fastq.gz	L001	VN001-3-029	R2

@@ -52,6 +52,9 @@ fi
 packages=(
   "python=3.11"
   "r-base=4.3"
+  "pip"
+  "setuptools"
+  "wheel"
   "r-flexmix"
   "r-remotes"
   "r-biocmanager"
@@ -119,13 +122,18 @@ if ! "$ENV_BIN/Rscript" "$PIPELINE_ROOT/scripts/setup_moimix.R"; then
 fi
 
 echo "[3/3] checking core executables"
-for tool in python fastp bwa samtools bcftools bgzip tabix freebayes gatk Rscript; do
+for tool in python python3 R Rscript fastp bwa samtools bcftools bgzip tabix freebayes gatk; do
   if [[ ! -x "$ENV_BIN/$tool" ]]; then
     echo "[ERROR] $tool is missing from $ENV_NAME." >&2
     echo "        Fix: conda activate $ENV_NAME && conda install -c conda-forge -c bioconda $tool" >&2
     exit 1
   fi
 done
+
+python_version="$($ENV_BIN/python --version 2>&1)"
+r_version="$($ENV_BIN/Rscript -e 'cat(R.version.string)' 2>/dev/null)"
+echo "Using Conda Python: $python_version"
+echo "Using Conda R: $r_version"
 
 chmod +x "$PIPELINE_ROOT"/run_pipeline.sh "$PIPELINE_ROOT"/scripts/*.sh "$PIPELINE_ROOT"/scripts/*.py
 echo

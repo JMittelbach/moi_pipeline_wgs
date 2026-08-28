@@ -33,6 +33,35 @@ if [[ -n "${CONDA_PREFIX:-}" && -d "$CONDA_PREFIX/bin" ]]; then
   export PATH
 fi
 
+# Resource guardrails.  Every numbered step sources this file, so the same
+# limits and BLAS/R settings are inherited by all child tools.  The configured
+# ceiling is deliberately capped at 48 GiB.  On Linux we additionally apply a
+# per-process virtual-memory limit; macOS does not expose a reliable portable
+# hard RSS limit, so the explicit Java/R limits and conservative thread count
+# remain the portable safeguards there.
+MAX_RAM_GB="${MAX_RAM_GB:-48}"
+[[ "$MAX_RAM_GB" =~ ^[1-9][0-9]*$ ]] || fail "MAX_RAM_GB must be a positive integer" "set MAX_RAM_GB (at most 48) in $CONFIG_FILE"
+(( MAX_RAM_GB <= 48 )) || fail "MAX_RAM_GB may not exceed 48 GiB" "set MAX_RAM_GB=48 (or a lower value) in $CONFIG_FILE"
+MAX_RAM_MB=$((MAX_RAM_GB * 1024))
+MAX_RAM_KB=$((MAX_RAM_MB * 1024))
+export MAX_RAM_GB MAX_RAM_MB MAX_RAM_KB
+
+# Keep common numerical runtimes from creating an unbounded number of worker
+# threads or arenas.  Pipeline tools still receive the configured THREADS.
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-${THREADS:-8}}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-${THREADS:-8}}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-${THREADS:-8}}"
+export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-${THREADS:-8}}"
+export R_MAX_VSIZE="${R_MAX_VSIZE:-${MAX_RAM_GB}G}"
+if [[ "$(uname -s)" == "Linux" ]]; then
+  current_virtual_kb="$(ulimit -v)"
+  if [[ "$current_virtual_kb" == "unlimited" || "$current_virtual_kb" -gt "$MAX_RAM_KB" ]]; then
+    ulimit -v "$MAX_RAM_KB" || fail \
+      "could not apply the ${MAX_RAM_GB} GiB virtual-memory limit" \
+      "raise the shell hard limit or run on a host that permits ulimit -v"
+  fi
+fi
+
 resolve_path() {
   local value="$1"
   if [[ "$value" == /* ]]; then
@@ -182,6 +211,21 @@ GATK_DISABLE_MAPPING_QUALITY_FILTER="${GATK_DISABLE_MAPPING_QUALITY_FILTER:-1}"
 [[ "$GATK_MIN_BASE_QUALITY_SCORE" =~ ^[0-9]+$ ]] || fail "GATK_MIN_BASE_QUALITY_SCORE must be a non-negative integer" "set GATK_MIN_BASE_QUALITY_SCORE in $CONFIG_FILE"
 [[ "$GATK_BASE_QUALITY_SCORE_THRESHOLD" =~ ^[0-9]+$ ]] || fail "GATK_BASE_QUALITY_SCORE_THRESHOLD must be a non-negative integer" "set GATK_BASE_QUALITY_SCORE_THRESHOLD in $CONFIG_FILE"
 [[ "$GATK_DISABLE_MAPPING_QUALITY_FILTER" =~ ^[01]$ ]] || fail "GATK_DISABLE_MAPPING_QUALITY_FILTER must be 0 or 1" "set GATK_DISABLE_MAPPING_QUALITY_FILTER=0 or 1 in $CONFIG_FILE"
+if [[ "$GATK_JAVA_OPTIONS" =~ -Xmx([1-9][0-9]*)([gGmMkK]) ]]; then
+  gatk_heap_value="${BASH_REMATCH[1]}"
+  gatk_heap_unit="${BASH_REMATCH[2]}"
+  case "$gatk_heap_unit" in
+    g|G) gatk_heap_mb=$((gatk_heap_value * 1024)) ;;
+    m|M) gatk_heap_mb=$gatk_heap_value ;;
+    k|K) gatk_heap_mb=$((gatk_heap_value / 1024)) ;;
+  esac
+  (( gatk_heap_mb <= MAX_RAM_MB )) || fail \
+    "GATK Java heap exceeds the ${MAX_RAM_GB} GiB pipeline ceiling" \
+    "lower -Xmx in GATK_JAVA_OPTIONS or raise no higher than MAX_RAM_GB=48"
+else
+  fail "GATK_JAVA_OPTIONS must contain an explicit -Xmx value" \
+    "for example set GATK_JAVA_OPTIONS=\"-Xmx4g\" in $CONFIG_FILE"
+fi
 awk -v value="$GATK_HETEROZYGOSITY" 'BEGIN { exit !(value > 0 && value < 1) }' || fail \
   "GATK_HETEROZYGOSITY must be between 0 and 1" "set GATK_HETEROZYGOSITY in $CONFIG_FILE"
 awk -v value="$GATK_INDEL_HETEROZYGOSITY" 'BEGIN { exit !(value > 0 && value < 1) }' || fail \
