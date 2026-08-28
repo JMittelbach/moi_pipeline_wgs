@@ -5,8 +5,9 @@ This repository contains a small, sequential pipeline for paired-end
 removes PCR duplicates, counts alleles at a frozen target panel, and reports
 Fws plus a BinomMix MOI estimate for every sample. The final step validates the
 human-readable main table and writes three small SVG quality/result plots.
-An optional FreeBayes branch can also call ordinary variants from each
-deduplicated BAM and write an indexed VCF; it is disabled by default.
+The always-on BCFtools branch extracts the frozen-panel REF/ALT counts used by
+MOI/Fws. Optional FreeBayes and GATK4 branches can also call ordinary variants
+from each deduplicated BAM and write indexed VCFs; both are disabled by default.
 
 ## Applicability to Plasmodium WGS
 
@@ -17,10 +18,10 @@ the same organism, contig names, and REF/ALT alleles. This workflow uses a
 for another Plasmodium species or a different allele universe.
 
 The fixed-site path intentionally stops at allele counts, which is the input
-required by the MOI/Fws calculation. FreeBayes is available as an optional
-whole-genome variant-calling convenience, but its VCF still requires project-
-specific filtering and review before scientific interpretation. No FASTQ, BAM,
-reference, index, or result file is stored in this repository.
+required by the MOI/Fws calculation. FreeBayes and GATK4 are available as
+optional whole-genome variant-calling conveniences, but their VCFs still require
+project-specific filtering and review before scientific interpretation. No
+FASTQ, BAM, reference, index, or result file is stored in this repository.
 
 ## Quick start
 
@@ -123,6 +124,16 @@ scheduler, hidden filesystem mount, or pre-existing output directory.
 | `FREEBAYES_PLOIDY` | FreeBayes ploidy passed to each BAM; default `1` |
 | `FREEBAYES_MIN_ALT_COUNT` | minimum alternate observations for a FreeBayes call; default `2` |
 | `FREEBAYES_MIN_ALT_FRACTION` | minimum alternate fraction for a FreeBayes call; default `0.2` |
+| `RUN_GATK4` | `1` enables optional GATK4 HaplotypeCaller/GenotypeGVCFs VCF calling after duplicate removal; default `0` |
+| `GATK_PLOIDY` | sample ploidy passed to HaplotypeCaller and GenotypeGVCFs; default `2` |
+| `GATK_HETEROZYGOSITY` | HaplotypeCaller heterozygosity prior; default `0.0029` |
+| `GATK_INDEL_HETEROZYGOSITY` | HaplotypeCaller indel heterozygosity prior; default `0.0017` |
+| `GATK_MIN_ASSEMBLY_REGION_SIZE` | minimum HaplotypeCaller assembly region; default `100` |
+| `GATK_MIN_BASE_QUALITY_SCORE` | minimum base quality accepted by HaplotypeCaller; default `5` |
+| `GATK_BASE_QUALITY_SCORE_THRESHOLD` | base-quality threshold used by HaplotypeCaller; default `12` |
+| `GATK_STAND_CALL_CONF` | GenotypeGVCFs stand-call confidence threshold; default `30` |
+| `GATK_JAVA_OPTIONS` | Java options for GATK commands; default `-Xmx4g` |
+| `GATK_DISABLE_MAPPING_QUALITY_FILTER` | `1` disables HaplotypeCaller’s mapping-quality read filter (the paper setting); default `1` |
 | `POPULATION` | population column used for Fws; it must exist in `POPULATION_PANEL`; default `Global` |
 | `FWS_MIN_DEPTH` | minimum modelled allele depth for Fws; default `50` |
 | `MAX_UNMODELLED_FRACTION` | maximum fraction of reported depth not represented in REF/ALT; default `0.02` |
@@ -136,19 +147,20 @@ scheduler, hidden filesystem mount, or pre-existing output directory.
 | step | script | program/action | important output |
 |---:|---|---|---|
 | 1 | `scripts/01_validate_inputs.sh` | checks Conda tools, sample sheet, FASTQs, reference, target index, panel, and `moimix`/`flexmix` | fail-fast preflight |
-| 2 | `scripts/02_prepare_reference.sh` | creates an intermediate-local FASTA symlink, `samtools faidx`, and `bwa index` | `processed/reference/reference.fasta.fai` and BWA index |
+| 2 | `scripts/02_prepare_reference.sh` | creates an intermediate-local FASTA symlink, `samtools faidx`, `bwa index`, and (when enabled) the GATK sequence dictionary | `processed/reference/reference.fasta.fai`, BWA index, and optional `reference.dict` |
 | 3 | `scripts/03_trim_reads.sh` | `fastp` paired-end adapter detection, quality filtering, and minimum length | `processed/trimmed/<sample>_R1/R2.fastq.gz` plus JSON/HTML QC |
 | 4 | `scripts/04_align_wgs.sh` | `bwa mem` with a read group, piped to `samtools sort -n` | `processed/bam/<sample>.name.bam` |
 | 5 | `scripts/05_mark_duplicates.sh` | `samtools fixmate`, coordinate sort, `samtools markdup -r`, and index | `processed/bam/<sample>.dedup.bam` + BAI; `processed/qc/duplicates/` flagstat |
 | 6a (optional) | `scripts/06_call_variants_freebayes.sh` | FreeBayes calling from each deduplicated BAM, BGZF compression, and Tabix indexing | `results/variants/<sample>.freebayes.vcf.gz` + `.tbi` |
+| 6c (optional) | `scripts/06_call_variants_gatk4.sh` | GATK4 HaplotypeCaller gVCF, then GenotypeGVCFs and Tabix indexing | `results/variants/<sample>.gatk4.vcf.gz` + `.tbi`; intermediate `processed/gatk4/<sample>.g.vcf.gz` |
 | 6 | `scripts/06_extract_counts.sh` | `bcftools mpileup` (`MAPQ`, `baseQ`, depth limits) plus haploid allele-constrained `bcftools call` | `processed/counts/<sample>.tsv` with `chrom/pos/ref/alt/AD/DP` |
 | 7 | `scripts/07_estimate_moi_fws.py` + `scripts/07_binommix.R` | Fws from the population panel, then BinomMix over `K_VALUES` | `results/metrics/<sample>.moi_fws.tsv`; R logs in `processed/logs/` |
 | 8 | `scripts/08_summary.sh` | combines all rows and selects one human-readable line per sample | `results/moi_fws_summary.tsv` and `results/moi_per_sample.tsv` |
 | 9 | `scripts/09_check_main_table_and_plots.py` | validates table headers, sample uniqueness, MOI/BIC fields, Fws values, and metric completeness; writes small dependency-free SVG plots | `OUTPUT_DIR/plots/moi_per_sample.svg`, `OUTPUT_DIR/plots/fws_per_sample.svg`, and `OUTPUT_DIR/plots/bic_support_per_sample.svg` |
 
 The top-level `scripts/00_run_pipeline.sh` calls those steps sequentially;
-the optional 6a branch exits cleanly when `RUN_FREEBAYES=0`. Full
-command output is written to `PROCESSED_DIR/logs`; the terminal shows only step,
+the optional 6a and 6c branches exit cleanly when their `RUN_*` setting is `0`.
+Full command output is written to `PROCESSED_DIR/logs`; the terminal shows only step,
 sample, and completion status. A failed command prints its last 40 log lines
 and an explicit repair suggestion.
 
@@ -167,6 +179,32 @@ The branch uses the configured `MIN_MAPQ` and `MIN_BASEQ` values and the
 MOI target panel); use a separate, validated filtering/annotation workflow for
 downstream variant analyses. The fixed-target counts and MOI/Fws outputs are
 unchanged by enabling this branch.
+
+### Optional GATK4 VCF calling
+
+Set `RUN_GATK4=1` and run the normal pipeline. Step 02 creates the FASTA
+sequence dictionary required by GATK4. For each deduplicated BAM, step 6c runs
+`HaplotypeCaller -ERC GVCF`, indexes the sample gVCF, and genotypes it with
+`GenotypeGVCFs`:
+
+```text
+processed/gatk4/<sample>.g.vcf.gz
+processed/gatk4/<sample>.g.vcf.gz.tbi
+results/variants/<sample>.gatk4.vcf.gz
+results/variants/<sample>.gatk4.vcf.gz.tbi
+```
+
+The default priors and thresholds (`0.0029` heterozygosity, `0.0017` indel
+heterozygosity, minimum assembly region `100`, minimum base quality `5`, base
+quality threshold `12`, mapping-quality filter disabled, and stand-call
+confidence `30`) follow the optimized *P. falciparum* WGS settings reported in
+the linked GATK4 study. This implementation applies those settings to the
+existing Pf-only deduplicated BAMs. It does not yet reproduce the paper’s
+competitive human+Pf mapping, joint multi-sample GenomicsDB import, VQSR
+training/filtering, or annotation steps; validate and filter the VCFs for the
+intended project before interpretation. The default ploidy is `2`; set
+`GATK_PLOIDY=6` explicitly when you want the paper’s higher-ploidy
+low-abundance-variant mode.
 
 ## MOI, Fws, and confidence fields
 
@@ -220,11 +258,12 @@ processed/
 ├── reference/                # symlink and FASTA/BWA indexes
 ├── trimmed/                  # fastp reads
 ├── bam/                      # name-sorted and duplicate-removed BAMs
+├── gatk4/                    # optional GATK4 sample gVCFs and indexes
 ├── counts/                   # fixed-target allele counts
 ├── qc/                       # fastp and samtools QC reports
 └── logs/                     # full command logs
 results/
-├── variants/                 # optional FreeBayes VCFs and Tabix indexes
+├── variants/                 # optional FreeBayes/GATK4 VCFs and Tabix indexes
 ├── metrics/                  # per-sample MOI/Fws TSVs
 ├── moi_fws_summary.tsv       # all three metric rows per sample
 ├── moi_per_sample.tsv        # one human-readable row per sample
@@ -235,9 +274,10 @@ results/
 
 Step 03 writes a fastp JSON and HTML report for each sample under
 `processed/qc/trim/`. Step 05 writes duplicate-removed BAM `samtools flagstat`
-reports under `processed/qc/duplicates/`. When enabled, FreeBayes writes one
-VCF and index per sample under
-`results/variants/` and logs under `processed/logs/06_freebayes_<sample>.log`.
+reports under `processed/qc/duplicates/`. When enabled, FreeBayes and GATK4
+each write one VCF and index per sample under
+`results/variants/` and logs under `processed/logs/06_freebayes_<sample>.log` or
+`processed/logs/06_gatk4_<sample>.log`.
 The data-producing commands in steps 02–07 write full logs under
 `processed/logs/`; preflight and table checks print
 concise diagnostics. The terminal deliberately shows only the current step,
@@ -304,7 +344,7 @@ population panel; obtain those files from a versioned project release.
 ### Software and method references
 
 The Conda environment installs Python 3.11, R 4.3, `fastp`, BWA, SAMtools,
-BCFtools/HTSlib, FreeBayes, and `flexmix`; `setup_moimix.R` then attempts to install the
+BCFtools/HTSlib, FreeBayes, GATK4, and `flexmix`; `setup_moimix.R` then attempts to install the
 pinned `moimix` revision used by this workflow. Report the exact resolved
 versions in a manuscript or supplement (for example,
 `conda list --name moi_pipeline` and `Rscript -e 'sessionInfo()'`). The primary
@@ -334,6 +374,7 @@ method references are:
   [`scripts/setup_moimix.R`](scripts/setup_moimix.R).
 - [`FreeBayes`](https://github.com/freebayes/freebayes): haplotype-based variant
   detector used by the optional VCF branch.
+- [Optimized GATK4 workflow for *P. falciparum* WGS](https://doi.org/10.1186/s12936-023-04632-0): parameter settings used by the optional GATK4 branch.
 
 For a reproducible publication run, record the repository commit, the final
 `config/pipeline.env`, the sample sheet, the resource checksum record, and the
@@ -386,6 +427,8 @@ flowchart TD
     ALIGN --> DEDUP[05 fixmate + coordinate sort<br/>samtools markdup -r + index<br/>processed/bam/]
     DEDUP --> FB{RUN_FREEBAYES=1?}
     FB -->|yes| CALL[06a FreeBayes<br/>results/variants/*.freebayes.vcf.gz]
+    DEDUP --> GK{RUN_GATK4=1?}
+    GK -->|yes| GATK[06c GATK4 HaplotypeCaller + GenotypeGVCFs<br/>results/variants/*.gatk4.vcf.gz]
     DEDUP --> COUNTS[06 bcftools mpileup/call<br/>fixed REF/ALT AD/DP<br/>processed/counts/]
     TARGETS[raw_data/reference/<br/>indexed fixed targets] --> COUNTS
     IDX --> COUNTS

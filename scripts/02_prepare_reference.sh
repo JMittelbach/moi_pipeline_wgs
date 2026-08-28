@@ -9,6 +9,9 @@ source "$SCRIPT_DIR/lib.sh" "$CONFIG"
 progress "2/9" "preparing reference indexes"
 require_command samtools
 require_command bwa
+if [[ "$RUN_GATK4" == 1 ]]; then
+  require_command gatk
+fi
 mkdir -p "$PROCESSED_DIR/reference"
 
 if [[ -e "$REFERENCE_LINK" && ! -L "$REFERENCE_LINK" ]]; then
@@ -29,8 +32,18 @@ if [[ ! -s "$BWA_PREFIX.bwt" ]]; then
     bwa index -p "$BWA_PREFIX" "$REFERENCE_LINK"
 fi
 
+if [[ "$RUN_GATK4" == 1 && ! -s "$REFERENCE_DICT" ]]; then
+  run_logged "$PROCESSED_DIR/logs/02_gatk_dictionary.log" "GATK sequence dictionary" \
+    gatk --java-options "$GATK_JAVA_OPTIONS" CreateSequenceDictionary \
+      -R "$REFERENCE_LINK" -O "$REFERENCE_DICT"
+fi
+
 [[ -s "$REFERENCE_LINK.fai" ]] || fail "samtools did not create a FASTA index" \
   "check $PROCESSED_DIR/logs/02_faidx.log and verify the FASTA is valid"
 [[ -s "$BWA_PREFIX.bwt" ]] || fail "BWA index is incomplete" \
   "check $PROCESSED_DIR/logs/02_bwa_index.log and verify write permission"
+if [[ "$RUN_GATK4" == 1 ]]; then
+  [[ -s "$REFERENCE_DICT" ]] || fail "GATK sequence dictionary is incomplete" \
+    "check $PROCESSED_DIR/logs/02_gatk_dictionary.log and verify write permission"
+fi
 echo "[2/9] OK: reference link, FASTA index, and BWA index are ready"

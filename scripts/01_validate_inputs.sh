@@ -13,6 +13,9 @@ done
 if [[ "$RUN_FREEBAYES" == 1 ]]; then
   require_command freebayes
 fi
+if [[ "$RUN_GATK4" == 1 ]]; then
+  require_command gatk
+fi
 
 [[ -r "$SAMPLES_TSV" ]] || fail "sample sheet is not readable: $SAMPLES_TSV" \
   "create a tab-separated file with header sample_id<TAB>R1<TAB>R2"

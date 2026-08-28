@@ -8,7 +8,7 @@ usage() {
 Usage: ./scripts/00_run_pipeline.sh [CONFIG]
        ./scripts/00_run_pipeline.sh --help
 
-Run the nine-step paired-end Plasmodium WGS MOI/Fws pipeline sequentially.
+Run the numbered paired-end Plasmodium WGS MOI/Fws pipeline sequentially.
 CONFIG defaults to config/pipeline.env. Completed files are reused when
 RESUME=1. Detailed command logs are written below PROCESSED_DIR/logs; the
 terminal shows step and sample progress only.
@@ -42,7 +42,7 @@ fi
 
 echo "Plasmodium WGS MOI/Fws pipeline"
 echo "Config: $CONFIG"
-echo "The nine steps run sequentially; completed files are reused when RESUME=1."
+echo "The numbered steps run sequentially; completed files are reused when RESUME=1."
 
 steps=(
   01_validate_inputs.sh
@@ -51,6 +51,7 @@ steps=(
   04_align_wgs.sh
   05_mark_duplicates.sh
   06_call_variants_freebayes.sh
+  06_call_variants_gatk4.sh
   06_extract_counts.sh
   07_estimate_moi_fws.py
   08_summary.sh

@@ -12,7 +12,8 @@ The fixture has two paired-end samples and 24 fixed SNP targets:
 Every target is covered by 60 molecules with unique alignment endpoints. Reads
 are 150 bp, fragments are 250 bp, and all bases have Phred quality 40. The
 separate configuration at `config/pipeline.synthetic.env` keeps test outputs
-under `test_runs/` and does not touch normal `processed/` or `results/` data.
+under `test_runs/` and does not touch normal `processed/` or `results/` data;
+it enables both optional FreeBayes and GATK4 variant-calling branches.
 
 The committed generator documents the fixture. To recreate the files, run it
 and then BGZF-compress and index the target table:

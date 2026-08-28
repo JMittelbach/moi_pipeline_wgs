@@ -67,6 +67,7 @@ else
   PLOTS_DIR="$OUTPUT_DIR/$PLOTS_DIR"
 fi
 REFERENCE_LINK="$PROCESSED_DIR/reference/reference.fasta"
+REFERENCE_DICT="$PROCESSED_DIR/reference/reference.dict"
 BWA_PREFIX="$PROCESSED_DIR/reference/pf3d7"
 
 THREADS="${THREADS:-8}"
@@ -143,6 +144,8 @@ dedup_bam() { printf '%s\n' "$PROCESSED_DIR/bam/$1.dedup.bam"; }
 counts_tsv() { printf '%s\n' "$PROCESSED_DIR/counts/$1.tsv"; }
 metrics_tsv() { printf '%s\n' "$OUTPUT_DIR/metrics/$1.moi_fws.tsv"; }
 freebayes_vcf() { printf '%s\n' "$OUTPUT_DIR/variants/$1.freebayes.vcf.gz"; }
+gatk4_gvcf() { printf '%s\n' "$PROCESSED_DIR/gatk4/$1.g.vcf.gz"; }
+gatk4_vcf() { printf '%s\n' "$OUTPUT_DIR/variants/$1.gatk4.vcf.gz"; }
 
 # FreeBayes is an optional whole-genome variant-calling branch.  The defaults
 # keep the historical fixed-target MOI/Fws path unchanged when it is disabled.
@@ -155,3 +158,28 @@ FREEBAYES_MIN_ALT_FRACTION="${FREEBAYES_MIN_ALT_FRACTION:-0.2}"
 [[ "$FREEBAYES_MIN_ALT_COUNT" =~ ^[1-9][0-9]*$ ]] || fail "FREEBAYES_MIN_ALT_COUNT must be a positive integer" "set FREEBAYES_MIN_ALT_COUNT in $CONFIG_FILE"
 awk -v fraction="$FREEBAYES_MIN_ALT_FRACTION" 'BEGIN { exit !(fraction >= 0 && fraction <= 1) }' || fail \
   "FREEBAYES_MIN_ALT_FRACTION must be between 0 and 1" "set FREEBAYES_MIN_ALT_FRACTION in $CONFIG_FILE"
+
+# GATK4 is an optional HaplotypeCaller -> gVCF -> GenotypeGVCFs branch.  The
+# defaults mirror the optimized Pf WGS settings described in the linked paper.
+RUN_GATK4="${RUN_GATK4:-0}"
+[[ "$RUN_GATK4" =~ ^[01]$ ]] || fail "RUN_GATK4 must be 0 or 1" "set RUN_GATK4=0 or RUN_GATK4=1 in $CONFIG_FILE"
+GATK_PLOIDY="${GATK_PLOIDY:-2}"
+GATK_HETEROZYGOSITY="${GATK_HETEROZYGOSITY:-0.0029}"
+GATK_INDEL_HETEROZYGOSITY="${GATK_INDEL_HETEROZYGOSITY:-0.0017}"
+GATK_MIN_ASSEMBLY_REGION_SIZE="${GATK_MIN_ASSEMBLY_REGION_SIZE:-100}"
+GATK_MIN_BASE_QUALITY_SCORE="${GATK_MIN_BASE_QUALITY_SCORE:-5}"
+GATK_BASE_QUALITY_SCORE_THRESHOLD="${GATK_BASE_QUALITY_SCORE_THRESHOLD:-12}"
+GATK_STAND_CALL_CONF="${GATK_STAND_CALL_CONF:-30}"
+GATK_JAVA_OPTIONS="${GATK_JAVA_OPTIONS:--Xmx4g}"
+GATK_DISABLE_MAPPING_QUALITY_FILTER="${GATK_DISABLE_MAPPING_QUALITY_FILTER:-1}"
+[[ "$GATK_PLOIDY" =~ ^[1-9][0-9]*$ ]] || fail "GATK_PLOIDY must be a positive integer" "set GATK_PLOIDY in $CONFIG_FILE"
+[[ "$GATK_MIN_ASSEMBLY_REGION_SIZE" =~ ^[1-9][0-9]*$ ]] || fail "GATK_MIN_ASSEMBLY_REGION_SIZE must be a positive integer" "set GATK_MIN_ASSEMBLY_REGION_SIZE in $CONFIG_FILE"
+[[ "$GATK_MIN_BASE_QUALITY_SCORE" =~ ^[0-9]+$ ]] || fail "GATK_MIN_BASE_QUALITY_SCORE must be a non-negative integer" "set GATK_MIN_BASE_QUALITY_SCORE in $CONFIG_FILE"
+[[ "$GATK_BASE_QUALITY_SCORE_THRESHOLD" =~ ^[0-9]+$ ]] || fail "GATK_BASE_QUALITY_SCORE_THRESHOLD must be a non-negative integer" "set GATK_BASE_QUALITY_SCORE_THRESHOLD in $CONFIG_FILE"
+[[ "$GATK_DISABLE_MAPPING_QUALITY_FILTER" =~ ^[01]$ ]] || fail "GATK_DISABLE_MAPPING_QUALITY_FILTER must be 0 or 1" "set GATK_DISABLE_MAPPING_QUALITY_FILTER=0 or 1 in $CONFIG_FILE"
+awk -v value="$GATK_HETEROZYGOSITY" 'BEGIN { exit !(value > 0 && value < 1) }' || fail \
+  "GATK_HETEROZYGOSITY must be between 0 and 1" "set GATK_HETEROZYGOSITY in $CONFIG_FILE"
+awk -v value="$GATK_INDEL_HETEROZYGOSITY" 'BEGIN { exit !(value > 0 && value < 1) }' || fail \
+  "GATK_INDEL_HETEROZYGOSITY must be between 0 and 1" "set GATK_INDEL_HETEROZYGOSITY in $CONFIG_FILE"
+awk -v value="$GATK_STAND_CALL_CONF" 'BEGIN { exit !(value >= 0) }' || fail \
+  "GATK_STAND_CALL_CONF must be non-negative" "set GATK_STAND_CALL_CONF in $CONFIG_FILE"

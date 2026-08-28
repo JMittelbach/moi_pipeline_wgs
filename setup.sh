@@ -9,7 +9,7 @@ usage() {
 Usage: ./setup.sh [--help]
 
 Create or update the Conda environment 'moi_pipeline', install the command-line
-tools (including optional FreeBayes variant calling) and R MOI dependencies,
+tools (including optional FreeBayes and GATK4 variant calling) and R MOI dependencies,
 and check that the executables are available.
 This script does not download FASTQs, reference genomes, indexes, targets, or
 results. After setup, activate the environment and edit config/pipeline.env.
@@ -61,6 +61,7 @@ packages=(
   "bcftools"
   "htslib"
   "freebayes"
+  "gatk4"
 )
 
 echo "[1/3] creating/updating Conda environment: $ENV_NAME"
@@ -101,6 +102,9 @@ if [[ "$activate_status" -ne 0 ]]; then
   exit 1
 fi
 ENV_BIN="$CONDA_PREFIX/bin"
+# Keep this setup invocation itself on the same toolchain that the pipeline
+# will use. (The parent shell still needs `conda activate moi_pipeline`.)
+export PATH="$ENV_BIN:$PATH"
 
 echo "[2/3] installing MOI estimator (moimix; flexmix fallback is retained)"
 if ! "$ENV_BIN/Rscript" "$PIPELINE_ROOT/scripts/setup_moimix.R"; then
@@ -115,7 +119,7 @@ if ! "$ENV_BIN/Rscript" "$PIPELINE_ROOT/scripts/setup_moimix.R"; then
 fi
 
 echo "[3/3] checking core executables"
-for tool in python fastp bwa samtools bcftools bgzip tabix freebayes Rscript; do
+for tool in python fastp bwa samtools bcftools bgzip tabix freebayes gatk Rscript; do
   if [[ ! -x "$ENV_BIN/$tool" ]]; then
     echo "[ERROR] $tool is missing from $ENV_NAME." >&2
     echo "        Fix: conda activate $ENV_NAME && conda install -c conda-forge -c bioconda $tool" >&2
