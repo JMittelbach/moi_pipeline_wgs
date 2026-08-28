@@ -127,9 +127,9 @@ for tool in python fastp bwa samtools bcftools bgzip tabix freebayes gatk Rscrip
   fi
 done
 
-chmod +x "$PIPELINE_ROOT"/scripts/*.sh "$PIPELINE_ROOT"/scripts/*.py
+chmod +x "$PIPELINE_ROOT"/run_pipeline.sh "$PIPELINE_ROOT"/scripts/*.sh "$PIPELINE_ROOT"/scripts/*.py
 echo
 echo "Setup complete. Activate the environment with:"
 echo "  conda activate $ENV_NAME"
 echo "Then edit config/pipeline.env and run:"
-echo "  ./scripts/00_run_pipeline.sh"
+echo "  ./run_pipeline.sh build-metadata"

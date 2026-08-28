@@ -1,4 +1,5 @@
 # Biological inputs and generated workflow data are intentionally external.
+__pycache__/
 raw_data/
 processed/
 data/

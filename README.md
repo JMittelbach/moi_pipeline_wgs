@@ -31,19 +31,18 @@ Run these commands from this repository root:
 ./setup.sh --help
 ./setup.sh
 conda activate moi_pipeline
-./scripts/00_run_pipeline.sh --help
+# edit config/pipeline.env if reference/target paths differ
+./run_pipeline.sh build-metadata
+# inspect/correct data/metadata.txt, then:
+./run_pipeline.sh
 ```
 
-Then edit [`config/pipeline.env`](config/pipeline.env), create the sample sheet
-described below, and run:
+The configuration is [`config/pipeline.env`](config/pipeline.env).
 
-```bash
-./scripts/00_run_pipeline.sh
-```
-
-Create the input directories explicitly with
-`mkdir -p raw_data/fastq raw_data/reference` before copying or downloading
-resources; `processed/` and `results/` are created by the pipeline as needed.
+Create `data/` and copy all paired FASTQ/FASTQ.GZ files there before the first
+metadata build. The pipeline creates `data/samples.tsv` and `data/merged/`
+when multiple lanes need to be combined; `processed/` and `results/` are
+created as needed.
 
 After a completed run, the table check and plot generation can also be repeated
 without rerunning previous steps:
@@ -53,17 +52,20 @@ without rerunning previous steps:
 ```
 
 `setup.sh` creates or updates the Conda environment `moi_pipeline`. The default
-configuration uses three clearly separated runtime directories (the data files
-themselves are deliberately not included):
+configuration uses separate data, intermediate, and result directories (the
+biological files themselves are deliberately not included):
 
 The setup and pipeline invoke tools from the active Conda environment
 explicitly. This avoids accidentally mixing Homebrew/system programs when
 their executables appear before Conda on `PATH` (a common macOS configuration).
 
 ```text
+data/
+├── *.fastq.gz                               # input paired-end reads
+├── metadata.txt                             # generated/reviewed file/lane/sample/read map
+├── samples.tsv                              # generated canonical sample sheet
+└── merged/                                   # generated multi-lane FASTQs
 raw_data/
-├── samples.tsv                              # sample_id, R1, R2
-├── fastq/                                   # input FASTQ(.gz) files
 └── reference/                               # external reference resources
     ├── GCF_000002765.6_genomic.fna          # Pf3D7 FASTA
     ├── pf4_global_maf001.targets.tsv.gz     # indexed target panel
@@ -72,8 +74,9 @@ processed/                                   # created at runtime: intermediates
 results/                                     # created at runtime: final tables/plots
 ```
 
-Put raw reads and reference resources in `raw_data/`, or replace these paths in
-`config/pipeline.env` when they are stored elsewhere. `processed/` contains
+Put the FASTQs in `data/` and the reference resources in `raw_data/reference/`,
+or replace these paths in `config/pipeline.env` when they are stored elsewhere.
+`processed/` contains
 reusable intermediate artefacts and logs; `results/` contains the compact final
 tables and plots. Both are ignored by Git. `setup.sh` does not download
 biological data. If Conda, the solver,
@@ -81,18 +84,36 @@ an environment directory, an executable, or an R package is unavailable, it
 prints the cause and a concrete fix. `setup.sh` cannot activate an environment
 in the parent shell; run `conda activate moi_pipeline` afterwards.
 
-## Input sample sheet
+## Metadata build and lane handling
 
-Create `raw_data/samples.tsv` (or change `SAMPLES_TSV` in the config):
+The first command scans `data/` and writes a reviewable, tab-separated
+`data/metadata.txt`:
 
-```text
-sample_id	R1	R2
-sample_01	sample_01_R1.fastq.gz	sample_01_R2.fastq.gz
-sample_02	/path/to/sample_02_R1.fastq.gz	/path/to/sample_02_R2.fastq.gz
+```bash
+./run_pipeline.sh build-metadata
 ```
 
-Relative FASTQ paths are resolved under `RAW_DIR`; absolute paths are accepted.
-Sample IDs may contain letters, numbers, `.`, `_`, and `-`.
+Supported Illumina-style names include `sample_S1_L001_R1_001.fastq.gz`,
+`sample_L002_R2.fastq.gz`, `sample_R1.fastq.gz`, and `sample.2.fq.gz`.
+The generated manifest has one row per FASTQ:
+
+```text
+file	lane	sample	read
+sample_S1_L001_R1_001.fastq.gz	L001	sample	R1
+sample_S1_L001_R2_001.fastq.gz	L001	sample	R2
+sample_S1_L002_R1_001.fastq.gz	L002	sample	R1
+sample_S1_L002_R2_001.fastq.gz	L002	sample	R2
+```
+
+The command then stops and asks you to inspect the file. Correct any sample,
+lane, read, or file-path assignment manually. Every sample/lane must have both
+R1 and R2; missing mates or unrecognized names are reported as errors. On the
+next `./run_pipeline.sh` call, reviewed metadata is validated, FASTQs from
+multiple lanes are merged into `data/merged/`, and the canonical
+`data/samples.tsv` is generated for the existing pipeline.
+
+Sample IDs may contain letters, numbers, `.`, `_`, and `-`; absolute file paths
+are accepted in a manually edited metadata file.
 
 ## Configuration
 
@@ -105,8 +126,8 @@ scheduler, hidden filesystem mount, or pre-existing output directory.
 
 | parameter | meaning |
 |---|---|
-| `SAMPLES_TSV` | three-column paired-read sheet (`sample_id`, `R1`, `R2`); default `raw_data/samples.tsv` |
-| `RAW_DIR` | base directory for relative FASTQ paths; default `raw_data/fastq` |
+| `SAMPLES_TSV` | generated three-column paired-read sheet (`sample_id`, `R1`, `R2`); default `data/samples.tsv` |
+| `RAW_DIR` | base directory for relative FASTQ paths; default `data` |
 | `REFERENCE` | parasite reference FASTA; default `raw_data/reference/GCF_000002765.6_genomic.fna` for official *P. falciparum* 3D7 assembly `GCF_000002765.6`; indexes are created under `PROCESSED_DIR/reference` |
 | `TARGETS` | indexed frozen target file; default `raw_data/reference/pf4_global_maf001.targets.tsv.gz`; supports four columns `chrom,pos,ref,alt` or three columns `chrom,pos,REF,ALT` where REF and ALT are comma-separated |
 | `POPULATION_PANEL` | target-aligned frequency table with `chrom`, `pos`, `ref`, `alt`, and `Global`; default `raw_data/reference/pf4_population_panel.tsv.gz` |
@@ -143,6 +164,11 @@ scheduler, hidden filesystem mount, or pre-existing output directory.
 | `RESUME` | `1` reuses non-empty completed outputs; `0` recomputes them; default `1` |
 
 ## Ordered scripts
+
+The root [`run_pipeline.sh`](run_pipeline.sh) handles the metadata-build pause,
+converts the reviewed manifest into the canonical sample sheet, and then
+delegates to the numbered scripts below. The numbered runner can still be
+called directly when an already prepared `SAMPLES_TSV` is supplied.
 
 | step | script | program/action | important output |
 |---:|---|---|---|
@@ -287,11 +313,12 @@ interpreting MOI or Fws; this repository does not perform automatic contaminatio
 or coverage-based sample exclusion.
 
 No biological data are downloaded by `setup.sh`. Download or obtain the FASTQs,
-Pf3D7 FASTA, indexed target file, and matching population panel separately, then
-place them at the `raw_data/` paths shown above (or set absolute paths in the
-config). The [resource section](#references-and-resources) gives the public Pf3D7
-accession and a reproducible NCBI command; the Pf4 target/panel pair must come
-from the versioned project release. Keep large files outside Git.
+Pf3D7 FASTA, indexed target file, and matching population panel separately;
+place FASTQs under `data/` and the reference resources under
+`raw_data/reference/` (or set absolute paths in the config). The [resource
+section](#references-and-resources) gives the public Pf3D7 accession and a
+reproducible NCBI command; the Pf4 target/panel pair must come from the
+versioned project release. Keep large files outside Git.
 
 ## References and resources
 
@@ -300,7 +327,7 @@ None of these files is copied into this repository.
 
 | resource | role in this pipeline | public accession or required filename | required at runtime? |
 |---|---|---|---|
-| paired WGS FASTQs | raw reads listed in `raw_data/samples.tsv` | study-specific SRA/BioProject accession and R1/R2 filenames; stored below `raw_data/fastq/` by default | yes |
+| paired WGS FASTQs | raw reads discovered into `data/metadata.txt` | study-specific SRA/BioProject accession and R1/R2 filenames; stored below `data/` by default | yes |
 | Pf3D7 reference FASTA | BWA alignment and `bcftools mpileup` | NCBI assembly [`GCF_000002765.6`](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000002765.6/); filename `GCF_000002765.6_genomic.fna` | yes |
 | frozen Pf4 target set | fixed sites passed to `mpileup` and MOI/Fws | `pf4_global_maf001.targets.tsv.gz` plus `.tbi`/`.csi` | yes |
 | Pf4 population panel | allele frequencies for Fws | `pf4_population_panel.tsv.gz` | yes |
@@ -418,7 +445,7 @@ project-specific host-depletion policy.
 ```mermaid
 flowchart TD
     CFG[config/pipeline.env<br/>paths + thresholds] --> V[01 validate inputs]
-    READS[raw_data/fastq/<br/>paired Plasmodium WGS FASTQs] --> V
+    READS[data/<br/>paired Plasmodium WGS FASTQs] --> V
     REF[raw_data/reference/<br/>Plasmodium FASTA] --> IDX[02 faidx + BWA index<br/>processed/reference/]
     V --> IDX
     IDX --> TRIM[03 fastp trim]
