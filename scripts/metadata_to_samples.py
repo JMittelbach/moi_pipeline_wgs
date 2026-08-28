@@ -17,7 +17,7 @@ from metadata_utils import parse_fastq_name
 
 
 def read_metadata(metadata_path: Path, data_dir: Path) -> dict[tuple[str, str, str], list[Path]]:
-    with metadata_path.open("r", encoding="utf-8", newline="") as handle:
+    with metadata_path.open("r", encoding="utf-8-sig", newline="") as handle:
         lines = [line for line in handle if line.strip() and not line.lstrip().startswith("#")]
     if not lines:
         raise ValueError(f"metadata file is empty: {metadata_path}")

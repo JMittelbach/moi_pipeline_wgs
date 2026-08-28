@@ -12,6 +12,7 @@ _READ_AT_END = re.compile(
     r"(?:^|[._-])(?:R)?(?P<read>[12])(?:[._-](?:[0-9]{3}|[0-9]+))?$",
     re.IGNORECASE,
 )
+_INDEX_READ_AT_END = re.compile(r"(?:^|[._-])I[12](?:[._-](?:[0-9]{3}|[0-9]+))?$", re.IGNORECASE)
 _LANE = re.compile(r"(?:^|[._-])(?:L|lane)(?P<lane>[0-9]{1,4})(?=$|[._-])", re.IGNORECASE)
 _SAMPLE_NUMBER = re.compile(r"(?:^|[._-])S[0-9]+$", re.IGNORECASE)
 
@@ -24,6 +25,16 @@ def strip_fastq_suffix(filename: str) -> str:
         if lowered.endswith(suffix):
             return filename[: -len(suffix)]
     raise ValueError(f"not a FASTQ/FASTQ.GZ filename: {filename}")
+
+
+def is_index_read(path: str | Path) -> bool:
+    """Return true for Illumina index reads (I1/I2), which are not paired reads."""
+
+    try:
+        stem = strip_fastq_suffix(Path(path).name)
+    except ValueError:
+        return False
+    return _INDEX_READ_AT_END.search(stem) is not None
 
 
 def parse_fastq_name(path: str | Path) -> tuple[str, str, str]:

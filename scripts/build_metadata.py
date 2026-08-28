@@ -10,7 +10,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from metadata_utils import FASTQ_SUFFIXES, parse_fastq_name
+from metadata_utils import FASTQ_SUFFIXES, is_index_read, parse_fastq_name
 
 
 def is_fastq(path: Path) -> bool:
@@ -45,8 +45,12 @@ def build(data_dir: Path, metadata_path: Path) -> int:
         return 1
 
     rows: list[tuple[str, str, str, str]] = []
+    ignored_index_reads: list[Path] = []
     errors: list[str] = []
     for path in fastqs:
+        if is_index_read(path):
+            ignored_index_reads.append(path)
+            continue
         try:
             sample, lane, read = parse_fastq_name(path)
         except ValueError as exc:
@@ -60,6 +64,9 @@ def build(data_dir: Path, metadata_path: Path) -> int:
         for error in errors:
             print(f"        - {error}", file=sys.stderr)
         print("        Rename files to a supported Illumina pattern or edit the manifest manually.", file=sys.stderr)
+        return 1
+    if not rows:
+        print("[ERROR] no paired R1/R2 FASTQs found (only index reads were present)", file=sys.stderr)
         return 1
 
     lane_reads: dict[tuple[str, str], set[str]] = defaultdict(set)
@@ -86,6 +93,8 @@ def build(data_dir: Path, metadata_path: Path) -> int:
     lanes = sorted({(row[2], row[1]) for row in rows})
     print(f"Metadata written: {metadata_path}")
     print(f"Detected {len(rows)} FASTQ files, {len(samples)} samples, and {len(lanes)} sample/lane groups.")
+    if ignored_index_reads:
+        print(f"Ignored {len(ignored_index_reads)} Illumina index-read file(s) (I1/I2).")
     for sample in samples:
         sample_lanes = sorted(lane for current_sample, lane in lanes if current_sample == sample)
         print(f"  {sample}: {', '.join(sample_lanes)}")
@@ -102,4 +111,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -74,9 +74,9 @@ processed/                                   # created at runtime: intermediates
 results/                                     # created at runtime: final tables/plots
 ```
 
-Put the FASTQs in `data/` and the reference resources in `raw_data/reference/`,
-or replace these paths in `config/pipeline.env` when they are stored elsewhere.
-`processed/` contains
+Put the FASTQs in `data/` for the root metadata workflow and the reference
+resources in `raw_data/reference/`. The reference, target, panel, and runtime
+paths can be changed in `config/pipeline.env`; `processed/` contains
 reusable intermediate artefacts and logs; `results/` contains the compact final
 tables and plots. Both are ignored by Git. `setup.sh` does not download
 biological data. If Conda, the solver,
@@ -95,6 +95,7 @@ The first command scans `data/` and writes a reviewable, tab-separated
 
 Supported Illumina-style names include `sample_S1_L001_R1_001.fastq.gz`,
 `sample_L002_R2.fastq.gz`, `sample_R1.fastq.gz`, and `sample.2.fq.gz`.
+Illumina index-read files ending in `I1` or `I2` are ignored automatically.
 The generated manifest has one row per FASTQ:
 
 ```text
