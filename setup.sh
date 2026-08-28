@@ -52,6 +52,7 @@ fi
 packages=(
   "python=3.11"
   "r-base=4.3"
+  "openjdk=17"
   "pip"
   "setuptools"
   "wheel"
@@ -105,9 +106,17 @@ if [[ "$activate_status" -ne 0 ]]; then
   exit 1
 fi
 ENV_BIN="$CONDA_PREFIX/bin"
+# Conda's macOS OpenJDK layout keeps Java below lib/jvm rather than linking it
+# into bin. Export it explicitly so GATK works even when the host has no Java.
+if [[ -x "$CONDA_PREFIX/lib/jvm/bin/java" ]]; then
+  JAVA_HOME="$CONDA_PREFIX/lib/jvm"
+  export JAVA_HOME
+  export PATH="$JAVA_HOME/bin:$ENV_BIN:$PATH"
+else
+  export PATH="$ENV_BIN:$PATH"
+fi
 # Keep this setup invocation itself on the same toolchain that the pipeline
 # will use. (The parent shell still needs `conda activate moi_pipeline`.)
-export PATH="$ENV_BIN:$PATH"
 
 echo "[2/3] installing MOI estimator (moimix; flexmix fallback is retained)"
 if ! "$ENV_BIN/Rscript" "$PIPELINE_ROOT/scripts/setup_moimix.R"; then
@@ -129,6 +138,16 @@ for tool in python python3 R Rscript fastp bwa samtools bcftools bgzip tabix fre
     exit 1
   fi
 done
+
+JAVA_BIN="$ENV_BIN/java"
+if [[ ! -x "$JAVA_BIN" && -x "$CONDA_PREFIX/lib/jvm/bin/java" ]]; then
+  JAVA_BIN="$CONDA_PREFIX/lib/jvm/bin/java"
+fi
+if [[ ! -x "$JAVA_BIN" ]]; then
+  echo "[ERROR] Java 17 is missing from $ENV_NAME." >&2
+  echo "        Fix: conda activate $ENV_NAME && conda install -c conda-forge openjdk=17" >&2
+  exit 1
+fi
 
 python_version="$($ENV_BIN/python --version 2>&1)"
 r_version="$($ENV_BIN/Rscript -e 'cat(R.version.string)' 2>/dev/null)"

@@ -30,6 +30,11 @@ source "$CONFIG_FILE"
 # active environment first so all pipeline tools (not only Rscript) agree.
 if [[ -n "${CONDA_PREFIX:-}" && -d "$CONDA_PREFIX/bin" ]]; then
   PATH="$CONDA_PREFIX/bin:$PATH"
+  if [[ -x "$CONDA_PREFIX/lib/jvm/bin/java" ]]; then
+    JAVA_HOME="$CONDA_PREFIX/lib/jvm"
+    PATH="$JAVA_HOME/bin:$PATH"
+    export JAVA_HOME
+  fi
   export PATH
 fi
 
