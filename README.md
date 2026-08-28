@@ -112,6 +112,9 @@ R1 and R2; missing mates or unrecognized names are reported as errors. On the
 next `./run_pipeline.sh` call, reviewed metadata is validated, FASTQs from
 multiple lanes are merged into `data/merged/`, and the canonical
 `data/samples.tsv` is generated for the existing pipeline.
+The root runner records a metadata checksum and automatically forces
+`RESUME=0` when the reviewed assignment changes, preventing stale trimmed/BAM
+outputs from being reused after a correction.
 
 Sample IDs may contain letters, numbers, `.`, `_`, and `-`; absolute file paths
 are accepted in a manually edited metadata file.

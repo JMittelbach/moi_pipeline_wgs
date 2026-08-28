@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
+import hashlib
 import os
 import re
 import shutil
@@ -77,10 +78,14 @@ def merge_fastqs(paths: list[Path], output: Path, metadata_mtime_ns: int) -> Non
     if output.is_file() and output.stat().st_mtime_ns >= newest_input_ns:
         return
     temporary = output.with_suffix(output.suffix + ".tmp")
-    with gzip.open(temporary, "wb", compresslevel=6) as destination:
-        for path in paths:
-            with open_fastq(path, "rb") as source:
-                shutil.copyfileobj(source, destination, length=1024 * 1024)
+    try:
+        with gzip.open(temporary, "wb", compresslevel=6) as destination:
+            for path in paths:
+                with open_fastq(path, "rb") as source:
+                    shutil.copyfileobj(source, destination, length=1024 * 1024)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
     os.replace(temporary, output)
 
 
@@ -146,6 +151,11 @@ def convert(metadata_path: Path, data_dir: Path, samples_path: Path) -> int:
         writer.writerow(("sample_id", "R1", "R2"))
         writer.writerows(output_rows)
     os.replace(temporary, samples_path)
+    state_path = data_dir / ".metadata.sha256"
+    state_temporary = state_path.with_suffix(state_path.suffix + ".tmp")
+    digest = hashlib.sha256(metadata_path.read_bytes()).hexdigest()
+    state_temporary.write_text(f"{digest}\n", encoding="ascii")
+    os.replace(state_temporary, state_path)
     print(f"Validated metadata and wrote {samples_path} for {len(output_rows)} samples.")
     return 0
 

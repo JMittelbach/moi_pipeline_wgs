@@ -54,5 +54,18 @@ fi
   "$PIPELINE_ROOT/data/metadata.txt" \
   "$PIPELINE_ROOT/data" \
   "$PIPELINE_ROOT/data/samples.tsv"
-exec "$PIPELINE_ROOT/scripts/00_run_pipeline.sh" "$CONFIG"
-
+metadata_state="$PIPELINE_ROOT/data/.metadata.sha256"
+current_metadata_hash="$(<"$metadata_state")"
+previous_metadata_hash=""
+if [[ -f "$metadata_state.previous" ]]; then
+  previous_metadata_hash="$(<"$metadata_state.previous")"
+fi
+force_recompute=0
+if [[ "$previous_metadata_hash" != "$current_metadata_hash" ]]; then
+  force_recompute=1
+fi
+cp "$metadata_state" "$metadata_state.previous"
+if [[ "$force_recompute" == 1 ]]; then
+  echo "Metadata changed or was prepared for the first time; recomputing pipeline outputs (RESUME=0)."
+fi
+FORCE_RECOMPUTE="$force_recompute" exec "$PIPELINE_ROOT/scripts/00_run_pipeline.sh" "$CONFIG"

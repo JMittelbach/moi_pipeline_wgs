@@ -83,9 +83,14 @@ K_VALUES="${K_VALUES:-1,2,3,4,5}"
 MOI_COVERAGE_THRESHOLD="${MOI_COVERAGE_THRESHOLD:-10}"
 MOI_NITER="${MOI_NITER:-1000}"
 RESUME="${RESUME:-1}"
+FORCE_RECOMPUTE="${FORCE_RECOMPUTE:-0}"
 
 [[ "$THREADS" =~ ^[1-9][0-9]*$ ]] || fail "THREADS must be a positive integer" "set THREADS in $CONFIG_FILE"
 [[ "$RESUME" =~ ^[01]$ ]] || fail "RESUME must be 0 or 1" "set RESUME=1 or RESUME=0"
+[[ "$FORCE_RECOMPUTE" =~ ^[01]$ ]] || fail "FORCE_RECOMPUTE must be 0 or 1" "use the root runner or unset FORCE_RECOMPUTE"
+if [[ "$FORCE_RECOMPUTE" == 1 ]]; then
+  RESUME=0
+fi
 
 mkdir -p "$PROCESSED_DIR/logs"
 
