@@ -9,7 +9,7 @@ source "$SCRIPT_DIR/lib.sh" "$CONFIG"
 progress "4/9" "aligning reads to the Plasmodium reference with BWA-MEM"
 require_command bwa
 require_command samtools
-mkdir -p "$OUTPUT_DIR/bam"
+mkdir -p "$PROCESSED_DIR/bam"
 
 sample_total=0
 while IFS=$'\t' read -r sample _r1 _r2; do
@@ -17,7 +17,7 @@ while IFS=$'\t' read -r sample _r1 _r2; do
   input1="$(trim_r1 "$sample")"
   input2="$(trim_r2 "$sample")"
   output="$(name_bam "$sample")"
-  log="$OUTPUT_DIR/logs/04_align_${sample}.log"
+  log="$PROCESSED_DIR/logs/04_align_${sample}.log"
   sample_total=$((sample_total + 1))
   if [[ "$RESUME" == 1 && -s "$output" ]]; then
     echo "[4/9] [$sample_total] $sample: alignment already exists (resume)"

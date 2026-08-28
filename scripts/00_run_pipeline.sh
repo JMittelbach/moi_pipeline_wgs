@@ -10,7 +10,7 @@ Usage: ./scripts/00_run_pipeline.sh [CONFIG]
 
 Run the nine-step paired-end Plasmodium WGS MOI/Fws pipeline sequentially.
 CONFIG defaults to config/pipeline.env. Completed files are reused when
-RESUME=1. Detailed command logs are written below OUTPUT_DIR/logs; the
+RESUME=1. Detailed command logs are written below PROCESSED_DIR/logs; the
 terminal shows step and sample progress only.
 
 Options:
@@ -66,4 +66,4 @@ for step in "${steps[@]}"; do
 done
 
 echo
-echo "DONE: MOI/Fws summary, main table, and small plots are in OUTPUT_DIR from the config."
+echo "DONE: intermediates/QC/logs are in PROCESSED_DIR; final tables and plots are in OUTPUT_DIR."

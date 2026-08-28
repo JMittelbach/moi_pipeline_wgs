@@ -1,4 +1,6 @@
 # Biological inputs and generated workflow data are intentionally external.
+raw_data/
+processed/
 data/
 results/
 *.fastq

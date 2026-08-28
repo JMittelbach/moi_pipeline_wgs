@@ -11,8 +11,8 @@ fail() {
   echo >&2
   echo "[ERROR] $message" >&2
   [[ -n "$fix" ]] && echo "        Fix: $fix" >&2
-  if [[ -n "${OUTPUT_DIR:-}" ]]; then
-    echo "        Logs: ${OUTPUT_DIR}/logs" >&2
+  if [[ -n "${PROCESSED_DIR:-}" ]]; then
+    echo "        Logs: ${PROCESSED_DIR}/logs" >&2
   fi
   exit 1
 }
@@ -42,7 +42,7 @@ required_setting() {
     "set $name in $CONFIG_FILE"
 }
 
-for setting in SAMPLES_TSV RAW_DIR REFERENCE TARGETS POPULATION_PANEL OUTPUT_DIR; do
+for setting in SAMPLES_TSV RAW_DIR REFERENCE TARGETS POPULATION_PANEL PROCESSED_DIR OUTPUT_DIR; do
   required_setting "$setting"
 done
 
@@ -51,6 +51,7 @@ RAW_DIR="$(resolve_path "$RAW_DIR")"
 REFERENCE="$(resolve_path "$REFERENCE")"
 TARGETS="$(resolve_path "$TARGETS")"
 POPULATION_PANEL="$(resolve_path "$POPULATION_PANEL")"
+PROCESSED_DIR="$(resolve_path "$PROCESSED_DIR")"
 OUTPUT_DIR="$(resolve_path "$OUTPUT_DIR")"
 PLOTS_DIR="${PLOTS_DIR:-plots}"
 if [[ "$PLOTS_DIR" == /* ]]; then
@@ -58,8 +59,8 @@ if [[ "$PLOTS_DIR" == /* ]]; then
 else
   PLOTS_DIR="$OUTPUT_DIR/$PLOTS_DIR"
 fi
-REFERENCE_LINK="$OUTPUT_DIR/reference/reference.fasta"
-BWA_PREFIX="$OUTPUT_DIR/reference/pf3d7"
+REFERENCE_LINK="$PROCESSED_DIR/reference/reference.fasta"
+BWA_PREFIX="$PROCESSED_DIR/reference/pf3d7"
 
 THREADS="${THREADS:-8}"
 TRIM_QUALITY="${TRIM_QUALITY:-30}"
@@ -78,7 +79,7 @@ RESUME="${RESUME:-1}"
 [[ "$THREADS" =~ ^[1-9][0-9]*$ ]] || fail "THREADS must be a positive integer" "set THREADS in $CONFIG_FILE"
 [[ "$RESUME" =~ ^[01]$ ]] || fail "RESUME must be 0 or 1" "set RESUME=1 or RESUME=0"
 
-mkdir -p "$OUTPUT_DIR/logs"
+mkdir -p "$PROCESSED_DIR/logs"
 
 progress() {
   echo "[$1] ${*:2}"
@@ -116,9 +117,9 @@ sample_path() {
   fi
 }
 
-trim_r1() { printf '%s\n' "$OUTPUT_DIR/trimmed/$1_R1.fastq.gz"; }
-trim_r2() { printf '%s\n' "$OUTPUT_DIR/trimmed/$1_R2.fastq.gz"; }
-name_bam() { printf '%s\n' "$OUTPUT_DIR/bam/$1.name.bam"; }
-dedup_bam() { printf '%s\n' "$OUTPUT_DIR/bam/$1.dedup.bam"; }
-counts_tsv() { printf '%s\n' "$OUTPUT_DIR/counts/$1.tsv"; }
+trim_r1() { printf '%s\n' "$PROCESSED_DIR/trimmed/$1_R1.fastq.gz"; }
+trim_r2() { printf '%s\n' "$PROCESSED_DIR/trimmed/$1_R2.fastq.gz"; }
+name_bam() { printf '%s\n' "$PROCESSED_DIR/bam/$1.name.bam"; }
+dedup_bam() { printf '%s\n' "$PROCESSED_DIR/bam/$1.dedup.bam"; }
+counts_tsv() { printf '%s\n' "$PROCESSED_DIR/counts/$1.tsv"; }
 metrics_tsv() { printf '%s\n' "$OUTPUT_DIR/metrics/$1.moi_fws.tsv"; }

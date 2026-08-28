@@ -9,21 +9,21 @@ source "$SCRIPT_DIR/lib.sh" "$CONFIG"
 progress "6/9" "extracting REF/ALT allele counts at frozen targets"
 require_command bcftools
 require_command tabix
-mkdir -p "$OUTPUT_DIR/counts"
+mkdir -p "$PROCESSED_DIR/counts"
 
 sample_total=0
 while IFS=$'\t' read -r sample _r1 _r2; do
   [[ -z "${sample:-}" ]] && continue
   bam="$(dedup_bam "$sample")"
   output="$(counts_tsv "$sample")"
-  log="$OUTPUT_DIR/logs/06_counts_${sample}.log"
+  log="$PROCESSED_DIR/logs/06_counts_${sample}.log"
   sample_total=$((sample_total + 1))
   if [[ "$RESUME" == 1 && -s "$output" ]]; then
     echo "[6/9] [$sample_total] $sample: counts already exist (resume)"
     continue
   fi
   echo "[6/9] [$sample_total] $sample: bcftools mpileup/call"
-  temporary_dir="$(mktemp -d "$OUTPUT_DIR/counts/.tmp_${sample}.XXXXXX")"
+  temporary_dir="$(mktemp -d "$PROCESSED_DIR/counts/.tmp_${sample}.XXXXXX")"
   temporary_bcf="$temporary_dir/counts.bcf"
   temporary_tsv="$temporary_dir/counts.tsv"
   cleanup() { rm -rf "$temporary_dir"; }

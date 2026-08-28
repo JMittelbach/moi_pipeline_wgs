@@ -165,6 +165,17 @@ def run_sample(args: argparse.Namespace, sample: str, counts_path: Path, output:
     try:
         command = ["Rscript", str(args.binommix), str(counts_path), sample, args.k_values, str(args.coverage), str(args.niter), str(moi_output)]
         result = subprocess.run(command, text=True, capture_output=True)
+        log_path = args.log_dir / f"07_moi_{sample}.log"
+        try:
+            args.log_dir.mkdir(parents=True, exist_ok=True)
+            log_path.write_text(
+                "$ " + " ".join(shlex.quote(part) for part in command)
+                + "\n\nSTDOUT\n" + result.stdout
+                + "\nSTDERR\n" + result.stderr,
+                encoding="utf-8",
+            )
+        except OSError as error:
+            fail(f"cannot write MOI log {log_path}: {error}", "check PROCESSED_DIR permissions")
         if result.returncode != 0:
             print(result.stdout, end="", file=sys.stderr)
             print(result.stderr, end="", file=sys.stderr)
@@ -199,6 +210,7 @@ def main() -> int:
     parser.add_argument("--targets", type=Path)
     parser.add_argument("--panel", type=Path)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--log-dir", type=Path)
     parser.add_argument("--binommix", type=Path)
     parser.add_argument("--population")
     parser.add_argument("--fws-min-depth", type=int)
@@ -230,10 +242,11 @@ def main() -> int:
         path = Path(value).expanduser()
         return path if path.is_absolute() else pipeline_root / path
 
-    args.counts_dir = args.counts_dir or setting_path("OUTPUT_DIR", pipeline_root / "results") / "counts"
+    args.counts_dir = args.counts_dir or setting_path("PROCESSED_DIR", pipeline_root / "processed") / "counts"
     args.targets = args.targets or setting_path("TARGETS", pipeline_root / "__missing_targets__")
     args.panel = args.panel or setting_path("POPULATION_PANEL", pipeline_root / "__missing_panel__")
     args.output_dir = args.output_dir or setting_path("OUTPUT_DIR", pipeline_root / "results") / "metrics"
+    args.log_dir = args.log_dir or setting_path("PROCESSED_DIR", pipeline_root / "processed") / "logs"
     args.binommix = args.binommix or pipeline_root / "scripts" / "07_binommix.R"
     args.population = args.population or settings.get("POPULATION", "Global")
     args.fws_min_depth = args.fws_min_depth if args.fws_min_depth is not None else int(settings.get("FWS_MIN_DEPTH", "50"))

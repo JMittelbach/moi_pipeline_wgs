@@ -38,6 +38,10 @@ described below, and run:
 ./scripts/00_run_pipeline.sh
 ```
 
+Create the input directories explicitly with
+`mkdir -p raw_data/fastq raw_data/reference` before copying or downloading
+resources; `processed/` and `results/` are created by the pipeline as needed.
+
 After a completed run, the table check and plot generation can also be repeated
 without rerunning previous steps:
 
@@ -46,28 +50,33 @@ without rerunning previous steps:
 ```
 
 `setup.sh` creates or updates the Conda environment `moi_pipeline`. The default
-configuration assumes this small local layout (the data files themselves are
-deliberately not included):
+configuration uses three clearly separated runtime directories (the data files
+themselves are deliberately not included):
 
 ```text
-data/
-├── fastq/                                  # input FASTQ(.gz) files
-└── reference/
-    ├── GCF_000002765.6_genomic.fna         # Pf3D7 FASTA
-    ├── pf4_global_maf001.targets.tsv.gz    # indexed target panel
-    └── pf4_population_panel.tsv.gz         # target-aligned frequencies
+raw_data/
+├── samples.tsv                              # sample_id, R1, R2
+├── fastq/                                   # input FASTQ(.gz) files
+└── reference/                               # external reference resources
+    ├── GCF_000002765.6_genomic.fna          # Pf3D7 FASTA
+    ├── pf4_global_maf001.targets.tsv.gz     # indexed target panel
+    └── pf4_population_panel.tsv.gz          # target-aligned frequencies
+processed/                                   # created at runtime: intermediates/QC/logs
+results/                                     # created at runtime: final tables/plots
 ```
 
-Replace these paths in `config/pipeline.env` when resources are stored
-elsewhere. `setup.sh` does not download biological data. If Conda, the solver,
+Put raw reads and reference resources in `raw_data/`, or replace these paths in
+`config/pipeline.env` when they are stored elsewhere. `processed/` contains
+reusable intermediate artefacts and logs; `results/` contains the compact final
+tables and plots. Both are ignored by Git. `setup.sh` does not download
+biological data. If Conda, the solver,
 an environment directory, an executable, or an R package is unavailable, it
 prints the cause and a concrete fix. `setup.sh` cannot activate an environment
 in the parent shell; run `conda activate moi_pipeline` afterwards.
 
 ## Input sample sheet
 
-Create a tab-separated file named `samples.tsv` (or change `SAMPLES_TSV` in the
-config):
+Create `raw_data/samples.tsv` (or change `SAMPLES_TSV` in the config):
 
 ```text
 sample_id	R1	R2
@@ -89,12 +98,13 @@ scheduler, hidden filesystem mount, or pre-existing output directory.
 
 | parameter | meaning |
 |---|---|
-| `SAMPLES_TSV` | three-column paired-read sheet (`sample_id`, `R1`, `R2`); default `samples.tsv` |
-| `RAW_DIR` | base directory for relative FASTQ paths; default `data/fastq` |
-| `REFERENCE` | parasite reference FASTA; default `data/reference/GCF_000002765.6_genomic.fna` for official *P. falciparum* 3D7 assembly `GCF_000002765.6`; a local `.fai` is created in the output directory |
-| `TARGETS` | indexed frozen target file; default `data/reference/pf4_global_maf001.targets.tsv.gz`; supports four columns `chrom,pos,ref,alt` or three columns `chrom,pos,REF,ALT` where REF and ALT are comma-separated |
-| `POPULATION_PANEL` | target-aligned frequency table with `chrom`, `pos`, `ref`, `alt`, and `Global`; default `data/reference/pf4_population_panel.tsv.gz` |
-| `OUTPUT_DIR` | directory for all generated files; default `results` |
+| `SAMPLES_TSV` | three-column paired-read sheet (`sample_id`, `R1`, `R2`); default `raw_data/samples.tsv` |
+| `RAW_DIR` | base directory for relative FASTQ paths; default `raw_data/fastq` |
+| `REFERENCE` | parasite reference FASTA; default `raw_data/reference/GCF_000002765.6_genomic.fna` for official *P. falciparum* 3D7 assembly `GCF_000002765.6`; indexes are created under `PROCESSED_DIR/reference` |
+| `TARGETS` | indexed frozen target file; default `raw_data/reference/pf4_global_maf001.targets.tsv.gz`; supports four columns `chrom,pos,ref,alt` or three columns `chrom,pos,REF,ALT` where REF and ALT are comma-separated |
+| `POPULATION_PANEL` | target-aligned frequency table with `chrom`, `pos`, `ref`, `alt`, and `Global`; default `raw_data/reference/pf4_population_panel.tsv.gz` |
+| `PROCESSED_DIR` | intermediate files, temporary files, QC reports, and logs; default `processed` |
+| `OUTPUT_DIR` | final metrics and summary tables; default `results` |
 | `PLOTS_DIR` | directory for the small SVG plots; relative paths are below `OUTPUT_DIR`; default `plots` |
 | `THREADS` | threads for trimming, mapping, and BAM processing; default `8` |
 | `TRIM_QUALITY` | minimum base quality used by `fastp`; default `30` |
@@ -116,17 +126,17 @@ scheduler, hidden filesystem mount, or pre-existing output directory.
 | step | script | program/action | important output |
 |---:|---|---|---|
 | 1 | `scripts/01_validate_inputs.sh` | checks Conda tools, sample sheet, FASTQs, reference, target index, panel, and `moimix`/`flexmix` | fail-fast preflight |
-| 2 | `scripts/02_prepare_reference.sh` | creates an output-local FASTA symlink, `samtools faidx`, and `bwa index` | `reference/reference.fasta.fai` and BWA index |
-| 3 | `scripts/03_trim_reads.sh` | `fastp` paired-end adapter detection, quality filtering, and minimum length | `trimmed/<sample>_R1/R2.fastq.gz` plus JSON/HTML QC |
-| 4 | `scripts/04_align_wgs.sh` | `bwa mem` with a read group, piped to `samtools sort -n` | name-sorted BAM |
-| 5 | `scripts/05_mark_duplicates.sh` | `samtools fixmate`, coordinate sort, `samtools markdup -r`, and index | duplicate-removed BAM and BAI |
-| 6 | `scripts/06_extract_counts.sh` | `bcftools mpileup` (`MAPQ`, `baseQ`, depth limits) plus haploid allele-constrained `bcftools call` | six-column `chrom/pos/ref/alt/AD/DP` table |
-| 7 | `scripts/07_estimate_moi_fws.py` + `scripts/07_binommix.R` | Fws from the population panel, then BinomMix over `K_VALUES` | per-sample MOI/Fws table |
-| 8 | `scripts/08_summary.sh` | combines all rows and selects one human-readable line per sample | `moi_fws_summary.tsv` and `moi_per_sample.tsv` |
+| 2 | `scripts/02_prepare_reference.sh` | creates an intermediate-local FASTA symlink, `samtools faidx`, and `bwa index` | `processed/reference/reference.fasta.fai` and BWA index |
+| 3 | `scripts/03_trim_reads.sh` | `fastp` paired-end adapter detection, quality filtering, and minimum length | `processed/trimmed/<sample>_R1/R2.fastq.gz` plus JSON/HTML QC |
+| 4 | `scripts/04_align_wgs.sh` | `bwa mem` with a read group, piped to `samtools sort -n` | `processed/bam/<sample>.name.bam` |
+| 5 | `scripts/05_mark_duplicates.sh` | `samtools fixmate`, coordinate sort, `samtools markdup -r`, and index | `processed/bam/<sample>.dedup.bam` + BAI; `processed/qc/duplicates/` flagstat |
+| 6 | `scripts/06_extract_counts.sh` | `bcftools mpileup` (`MAPQ`, `baseQ`, depth limits) plus haploid allele-constrained `bcftools call` | `processed/counts/<sample>.tsv` with `chrom/pos/ref/alt/AD/DP` |
+| 7 | `scripts/07_estimate_moi_fws.py` + `scripts/07_binommix.R` | Fws from the population panel, then BinomMix over `K_VALUES` | `results/metrics/<sample>.moi_fws.tsv`; R logs in `processed/logs/` |
+| 8 | `scripts/08_summary.sh` | combines all rows and selects one human-readable line per sample | `results/moi_fws_summary.tsv` and `results/moi_per_sample.tsv` |
 | 9 | `scripts/09_check_main_table_and_plots.py` | validates table headers, sample uniqueness, MOI/BIC fields, Fws values, and metric completeness; writes small dependency-free SVG plots | `OUTPUT_DIR/plots/moi_per_sample.svg`, `OUTPUT_DIR/plots/fws_per_sample.svg`, and `OUTPUT_DIR/plots/bic_support_per_sample.svg` |
 
 The top-level `scripts/00_run_pipeline.sh` calls those steps sequentially. Full
-command output is written to `OUTPUT_DIR/logs`; the terminal shows only step,
+command output is written to `PROCESSED_DIR/logs`; the terminal shows only step,
 sample, and completion status. A failed command prints its last 40 log lines
 and an explicit repair suggestion.
 
@@ -178,11 +188,38 @@ intended for a quick terminal/browser check, not publication-quality figures.
 The generated output layout is therefore:
 
 ```text
-OUTPUT_DIR/
+processed/
+├── reference/                # symlink and FASTA/BWA indexes
+├── trimmed/                  # fastp reads
+├── bam/                      # name-sorted and duplicate-removed BAMs
+├── counts/                   # fixed-target allele counts
+├── qc/                       # fastp and samtools QC reports
+└── logs/                     # full command logs
+results/
+├── metrics/                  # per-sample MOI/Fws TSVs
 ├── moi_fws_summary.tsv       # all three metric rows per sample
 ├── moi_per_sample.tsv        # one human-readable row per sample
 └── plots/                    # three small SVGs from step 09
 ```
+
+### QC and download checklist
+
+Step 03 writes a fastp JSON and HTML report for each sample under
+`processed/qc/trim/`. Step 05 writes duplicate-removed BAM `samtools flagstat`
+reports under `processed/qc/duplicates/`. The data-producing commands in steps
+02–07 write full logs under `processed/logs/`; preflight and table checks print
+concise diagnostics. The terminal deliberately shows only the current step,
+sample, and completion status. Step 09 checks table structure and values before
+writing the three small SVGs in `results/plots/`. Review these reports before
+interpreting MOI or Fws; this repository does not perform automatic contamination
+or coverage-based sample exclusion.
+
+No biological data are downloaded by `setup.sh`. Download or obtain the FASTQs,
+Pf3D7 FASTA, indexed target file, and matching population panel separately, then
+place them at the `raw_data/` paths shown above (or set absolute paths in the
+config). The [resource section](#references-and-resources) gives the public Pf3D7
+accession and a reproducible NCBI command; the Pf4 target/panel pair must come
+from the versioned project release. Keep large files outside Git.
 
 ## References and resources
 
@@ -191,7 +228,7 @@ None of these files is copied into this repository.
 
 | resource | role in this pipeline | public accession or required filename | required at runtime? |
 |---|---|---|---|
-| paired WGS FASTQs | raw reads listed in `samples.tsv` | study-specific SRA/BioProject accession and R1/R2 filenames | yes |
+| paired WGS FASTQs | raw reads listed in `raw_data/samples.tsv` | study-specific SRA/BioProject accession and R1/R2 filenames; stored below `raw_data/fastq/` by default | yes |
 | Pf3D7 reference FASTA | BWA alignment and `bcftools mpileup` | NCBI assembly [`GCF_000002765.6`](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000002765.6/); filename `GCF_000002765.6_genomic.fna` | yes |
 | frozen Pf4 target set | fixed sites passed to `mpileup` and MOI/Fws | `pf4_global_maf001.targets.tsv.gz` plus `.tbi`/`.csi` | yes |
 | Pf4 population panel | allele frequencies for Fws | `pf4_population_panel.tsv.gz` | yes |
@@ -274,7 +311,7 @@ indexes, and generated result matrices.
 
 This workflow does not download or copy reference genomes. Before running,
 provide the Pf3D7 FASTA at `REFERENCE`; step 02 creates only a symlink under
-`OUTPUT_DIR/reference/` and builds the FASTA/BWA indexes there. The target and
+`PROCESSED_DIR/reference/` and builds the FASTA/BWA indexes there. The target and
 population files must be the matching frozen pair listed above. Do not replace
 the Pf3D7 FASTA with a different assembly without rebuilding and validating
 the target/panel coordinates and REF/ALT alleles.
@@ -306,23 +343,23 @@ project-specific host-depletion policy.
 ```mermaid
 flowchart TD
     CFG[config/pipeline.env<br/>paths + thresholds] --> V[01 validate inputs]
-    READS[paired Plasmodium WGS FASTQs<br/>samples.tsv] --> V
-    REF[Plasmodium FASTA] --> IDX[02 faidx + BWA index]
+    READS[raw_data/fastq/<br/>paired Plasmodium WGS FASTQs] --> V
+    REF[raw_data/reference/<br/>Plasmodium FASTA] --> IDX[02 faidx + BWA index<br/>processed/reference/]
     V --> IDX
     IDX --> TRIM[03 fastp trim]
     READS --> TRIM
-    TRIM --> ALIGN[04 BWA-MEM + samtools name sort]
-    ALIGN --> DEDUP[05 fixmate + coordinate sort<br/>samtools markdup -r + index]
-    DEDUP --> COUNTS[06 bcftools mpileup/call<br/>fixed REF/ALT AD/DP]
-    TARGETS[indexed fixed targets] --> COUNTS
+    TRIM --> ALIGN[04 BWA-MEM + samtools name sort<br/>processed/bam/]
+    ALIGN --> DEDUP[05 fixmate + coordinate sort<br/>samtools markdup -r + index<br/>processed/bam/]
+    DEDUP --> COUNTS[06 bcftools mpileup/call<br/>fixed REF/ALT AD/DP<br/>processed/counts/]
+    TARGETS[raw_data/reference/<br/>indexed fixed targets] --> COUNTS
     IDX --> COUNTS
     COUNTS --> MET[07 Fws + MOI]
-    PANEL[Global population-frequency panel] --> MET
+    PANEL[raw_data/reference/<br/>Global population-frequency panel] --> MET
     MET --> FWS[Fws diagnostics]
     MET --> MIX[07_binommix.R<br/>moimix or flexmix fallback]
     FWS --> PER[per-sample metrics TSV]
     MIX --> PER
     PER --> SUMMARY[08 summary]
     SUMMARY --> CHECK[09 validate main table<br/>and make small SVG plots]
-    CHECK --> FINAL[moi_fws_summary.tsv<br/>moi_per_sample.tsv<br/>plots/*.svg]
+    CHECK --> FINAL[results/<br/>moi_fws_summary.tsv<br/>moi_per_sample.tsv<br/>plots/*.svg]
 ```

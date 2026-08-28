@@ -8,7 +8,7 @@ source "$SCRIPT_DIR/lib.sh" "$CONFIG"
 
 progress "3/9" "trimming paired reads with fastp"
 require_command fastp
-mkdir -p "$OUTPUT_DIR/trimmed" "$OUTPUT_DIR/qc/trim"
+mkdir -p "$PROCESSED_DIR/trimmed" "$PROCESSED_DIR/qc/trim"
 
 sample_total=0
 while IFS=$'\t' read -r sample r1 r2; do
@@ -17,9 +17,9 @@ while IFS=$'\t' read -r sample r1 r2; do
   in2="$(sample_path "$r2")"
   out1="$(trim_r1 "$sample")"
   out2="$(trim_r2 "$sample")"
-  json="$OUTPUT_DIR/qc/trim/${sample}.json"
-  html="$OUTPUT_DIR/qc/trim/${sample}.html"
-  log="$OUTPUT_DIR/logs/03_trim_${sample}.log"
+  json="$PROCESSED_DIR/qc/trim/${sample}.json"
+  html="$PROCESSED_DIR/qc/trim/${sample}.html"
+  log="$PROCESSED_DIR/logs/03_trim_${sample}.log"
   sample_total=$((sample_total + 1))
   if [[ "$RESUME" == 1 && -s "$out1" && -s "$out2" ]]; then
     echo "[3/9] [$sample_total] $sample: trimmed files already exist (resume)"

@@ -77,7 +77,7 @@ def finite_number(value: str | None, field: str, sample: str, *, allow_empty: bo
     if value == "":
         if allow_empty:
             return None
-        fail(f"main table has an empty {field} for sample {sample}", "rerun steps 07-09 and inspect OUTPUT_DIR/logs")
+        fail(f"main table has an empty {field} for sample {sample}", "rerun steps 07-09 and inspect PROCESSED_DIR/logs")
     try:
         number = float(value)
     except ValueError:

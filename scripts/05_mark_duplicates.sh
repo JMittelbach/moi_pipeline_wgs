@@ -8,18 +8,18 @@ source "$SCRIPT_DIR/lib.sh" "$CONFIG"
 
 progress "5/9" "fixing mate tags, coordinate-sorting, and removing duplicates"
 require_command samtools
-mkdir -p "$OUTPUT_DIR/bam" "$OUTPUT_DIR/qc/duplicates"
+mkdir -p "$PROCESSED_DIR/bam" "$PROCESSED_DIR/qc/duplicates"
 
 sample_total=0
 while IFS=$'\t' read -r sample _r1 _r2; do
   [[ -z "${sample:-}" ]] && continue
   name_sorted="$(name_bam "$sample")"
-  fixmate="$OUTPUT_DIR/bam/$sample.fixmate.bam"
-  coordinate="$OUTPUT_DIR/bam/$sample.coordinate.bam"
+  fixmate="$PROCESSED_DIR/bam/$sample.fixmate.bam"
+  coordinate="$PROCESSED_DIR/bam/$sample.coordinate.bam"
   output="$(dedup_bam "$sample")"
   bai="$output.bai"
-  metrics="$OUTPUT_DIR/qc/duplicates/${sample}.flagstat.txt"
-  log="$OUTPUT_DIR/logs/05_duplicates_${sample}.log"
+  metrics="$PROCESSED_DIR/qc/duplicates/${sample}.flagstat.txt"
+  log="$PROCESSED_DIR/logs/05_duplicates_${sample}.log"
   sample_total=$((sample_total + 1))
   if [[ "$RESUME" == 1 && -s "$output" && -s "$bai" ]]; then
     echo "[5/9] [$sample_total] $sample: duplicate-marked BAM already exists (resume)"
